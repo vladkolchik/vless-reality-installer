@@ -4,7 +4,7 @@
 # Автоматическая установка и настройка VLESS+Reality VPN сервера
 # 
 # Использование:
-# bash <(curl -s https://raw.githubusercontent.com/username/repo/main/install_vless_reality.sh)
+# bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
 
 set -e
 

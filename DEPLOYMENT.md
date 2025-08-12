@@ -60,7 +60,7 @@ https://raw.githubusercontent.com/yourusername/reponame/main/install_vless_reali
 
 Протестируйте команду установки:
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/yourusername/reponame/main/install_vless_reality.sh)
+bash <(curl -s [https://raw.githubusercontent.com/yourusername/reponame/main/install_vless_reality.sh](https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh))
 ```
 
 ## 🔧 Настройка автообновлений
@@ -247,3 +247,4 @@ assignees: ''
 ---
 
 🎯 **Следуя этой инструкции, вы сможете профессионально развернуть и поддерживать VPN установщик на GitHub!**
+

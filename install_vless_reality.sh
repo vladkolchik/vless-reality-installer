@@ -2,6 +2,7 @@
 
 # VLESS+Reality VPN Automatic Installation Script
 # Автоматическая установка и настройка VLESS+Reality VPN сервера
+# Основано на проверенной методике из статьи: https://habr.com/ru/articles/869340/
 # 
 # Использование:
 # bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
@@ -50,7 +51,7 @@ generate_short_id() {
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         print_error "Этот скрипт должен запускаться с правами root!"
-        print_status "Попробуйте: sudo bash <(curl -s https://your-repo-url/install_vless_reality.sh)"
+        print_status "Попробуйте: sudo bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)"
         exit 1
     fi
 }
@@ -70,14 +71,13 @@ detect_os() {
     print_status "Обнаружена ОС: $OS"
 }
 
-# Функция обновления системы
-update_system() {
-    print_step "Обновление системы..."
+# Функция установки необходимых пакетов
+install_packages() {
+    print_step "Установка необходимых пакетов..."
     if [[ $OS == "debian" ]]; then
-        apt update -y && apt upgrade -y
+        apt update -y
         apt install -y curl wget unzip openssl qrencode
     else
-        yum update -y
         yum install -y curl wget unzip openssl qrencode
     fi
 }
@@ -111,10 +111,10 @@ generate_config() {
     print_status "Private key: $PRIVATE_KEY"
     print_status "Public key: $PUBLIC_KEY"
     
-    # Генерация коротких ID
-    SHORT_ID1=$(generate_short_id)
-    SHORT_ID2=$(generate_short_id)
-    SHORT_ID3=$(generate_short_id)
+    # Генерация коротких ID (как в статье Habr)
+    SHORT_ID1=$(openssl rand -hex 6)
+    SHORT_ID2=$(openssl rand -hex 6)
+    SHORT_ID3=$(openssl rand -hex 6)
     
     print_status "Short IDs: $SHORT_ID1, $SHORT_ID2, $SHORT_ID3"
     
@@ -122,9 +122,9 @@ generate_config() {
     SERVER_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || curl -s icanhazip.com)
     print_status "IP сервера: $SERVER_IP"
     
-    # Выбор сайта для маскировки (можно расширить список)
-    DEST_SITES=("nu.nl" "www.microsoft.com" "www.cloudflare.com" "www.bing.com")
-    DEST_SITE=${DEST_SITES[$RANDOM % ${#DEST_SITES[@]}]}
+    # Выбор сайта для маскировки (nu.nl по умолчанию как проверенный)
+    DEST_SITES=("nu.nl" "www.microsoft.com" "www.cloudflare.com" "discord.com" "www.apple.com")
+    DEST_SITE="nu.nl"  # По умолчанию используем nu.nl
     print_status "Сайт для маскировки: $DEST_SITE"
 }
 
@@ -137,7 +137,7 @@ create_xray_config() {
         cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.backup
     fi
     
-    # Создание новой конфигурации
+    # Создание новой конфигурации (точно по статье Habr)
     cat > /usr/local/etc/xray/config.json << EOF
 {
     "log": {
@@ -193,6 +193,8 @@ EOF
     
     print_status "Конфигурация X-ray создана"
 }
+
+
 
 # Функция настройки firewall
 setup_firewall() {
@@ -390,7 +392,7 @@ main() {
     # Выполнение всех этапов
     check_root
     detect_os
-    update_system
+    install_packages
     install_xray
     generate_config
     create_xray_config

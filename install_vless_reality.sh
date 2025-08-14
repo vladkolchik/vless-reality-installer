@@ -465,10 +465,12 @@ print_qr_codes_console() {
             CONFIG_PATH="/root/vless-configs/config_${i}_${port_tag}.txt"
             if [[ -f "$CONFIG_PATH" ]]; then
                 URL_VALUE=$(cat "$CONFIG_PATH")
-                echo -e "${PURPLE}config_${i}_${port_tag}:${NC}"
-                qrencode -t ANSIUTF8 -m 1 "$URL_VALUE"
-				# Строка конфигурации для копирования
-				echo "$URL_VALUE"
+				echo -e "${PURPLE}config_${i}_${port_tag}:${NC}"
+				# Строка конфигурации для копирования (печатаем до QR, чтобы избежать визуальных разрывов)
+				printf '%s\n' "$URL_VALUE"
+				# Сброс форматирования терминала перед выводом QR
+				tput sgr0 2>/dev/null || true
+				qrencode -t ANSIUTF8 -m 1 "$URL_VALUE"
                 echo ""
             fi
         done
@@ -694,11 +696,6 @@ show_results() {
     
 	# Печать QR-кодов в консоль
 	print_qr_codes_console
-
-    # Показать одну конфигурацию для быстрого копирования
-    echo -e "${PURPLE}📋 Конфигурация для копирования (443):${NC}"
-    echo "$(cat /root/vless-configs/config_1_443.txt)"
-    echo ""
     
     echo -e "${YELLOW}⚠️  Сохраните эти данные в безопасном месте!${NC}"
 }

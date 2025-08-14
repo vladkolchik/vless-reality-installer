@@ -467,6 +467,8 @@ print_qr_codes_console() {
                 URL_VALUE=$(cat "$CONFIG_PATH")
                 echo -e "${PURPLE}config_${i}_${port_tag}:${NC}"
                 qrencode -t ANSIUTF8 -m 1 "$URL_VALUE"
+				# Строка конфигурации для копирования
+				echo "$URL_VALUE"
                 echo ""
             fi
         done

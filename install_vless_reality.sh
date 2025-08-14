@@ -254,6 +254,75 @@ install_fail2ban() {
 	fi
 }
 
+# Функция установки sudo и инструмента для выдачи прав
+install_sudo_and_privilege_tools() {
+	print_step "Установка sudo и настройка прав суперпользователя..."
+
+	# Установка sudo
+	if [[ $OS == "debian" ]]; then
+		apt install -y sudo
+	else
+		yum install -y sudo
+	fi
+
+	# Обеспечить корректную конфигурацию sudoers для групп sudo и wheel
+	cat > /etc/sudoers.d/99-sudo-wheel << 'EOF'
+%sudo ALL=(ALL) ALL
+%wheel ALL=(ALL) ALL
+EOF
+	chmod 440 /etc/sudoers.d/99-sudo-wheel
+	chown root:root /etc/sudoers.d/99-sudo-wheel
+
+	# Утилита grant-sudo: добавление пользователя в группу sudo/wheel
+	cat > /usr/local/bin/grant-sudo << 'EOF'
+#!/bin/bash
+set -e
+if [[ $EUID -ne 0 ]]; then
+  echo "This tool must be run as root" >&2
+  exit 1
+fi
+
+if [[ -z "$1" ]]; then
+  echo "Usage: grant-sudo <username>" >&2
+  exit 1
+fi
+
+USERNAME="$1"
+
+if ! id -u "$USERNAME" >/dev/null 2>&1; then
+  useradd -m -s /bin/bash "$USERNAME"
+  echo "User '$USERNAME' created. Set a password with: passwd $USERNAME"
+fi
+
+if [[ -f /etc/debian_version ]]; then
+  GROUP_NAME="sudo"
+else
+  GROUP_NAME="wheel"
+fi
+
+usermod -aG "$GROUP_NAME" "$USERNAME"
+echo "User '$USERNAME' added to group '$GROUP_NAME' (sudo privileges)."
+EOF
+
+	chmod 755 /usr/local/bin/grant-sudo
+	chown root:root /usr/local/bin/grant-sudo
+
+	print_status "sudo установлен. Доступна команда 'grant-sudo' для выдачи прав."
+
+	# Предложить сразу выдать права новому пользователю
+	read -p "Создать пользователя с sudo-привилегиями сейчас? (y/N): " -n 1 -r
+	echo ""
+	if [[ $REPLY =~ ^[Yy]$ ]]; then
+		read -p "Введите имя нового пользователя: " NEW_USERNAME
+		if [[ -n "$NEW_USERNAME" ]]; then
+			/usr/local/bin/grant-sudo "$NEW_USERNAME"
+			print_status "Пользователь '$NEW_USERNAME' добавлен с sudo-привилегиями. Не забудьте задать пароль: passwd $NEW_USERNAME"
+		else
+			print_warning "Имя пользователя не задано, пропускаем создание."
+		fi
+	fi
+}
+
 # Функция запуска и проверки X-ray
 start_xray() {
     print_step "Запуск X-ray сервиса..."
@@ -354,6 +423,91 @@ print_qr_codes_console() {
 	done
 }
 
+# Функция удаления всех изменений, внесенных скриптом
+uninstall_all() {
+	print_step "Удаление установленных компонент и настроек..."
+
+	# Опциональные флаги: --yes (без вопросов), --reset-firewall
+	AUTO_YES=false
+	RESET_FIREWALL=false
+	for arg in "$@"; do
+		case "$arg" in
+			--yes)
+				AUTO_YES=true
+				;;
+			--reset-firewall)
+				RESET_FIREWALL=true
+				;;
+		esac
+	done
+
+	if [[ "$AUTO_YES" != true ]]; then
+		print_warning "Будут удалены: Xray, его конфигурации и QR, fail2ban, скрипт grant-sudo и sudoers drop-in."
+		read -p "Продолжить удаление? (y/N): " -n 1 -r
+		echo ""
+		if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+			print_status "Удаление отменено пользователем."
+			return
+		fi
+	fi
+
+	# Остановка сервисов
+	if systemctl list-unit-files | grep -q '^xray\.service'; then
+		systemctl stop xray || true
+		systemctl disable xray || true
+	fi
+	if systemctl list-unit-files | grep -q '^fail2ban\.service'; then
+		systemctl stop fail2ban || true
+		systemctl disable fail2ban || true
+	fi
+
+	# Удаление Xray через официальный инсталлер (если доступен)
+	if command -v bash >/dev/null 2>&1; then
+		bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove || true
+	fi
+
+	# Ручная очистка Xray (на случай, если remove не сработал)
+	rm -f /etc/systemd/system/xray.service /etc/systemd/system/xray@.service 2>/dev/null || true
+	rm -rf /usr/local/etc/xray 2>/dev/null || true
+	rm -f /usr/local/bin/xray 2>/dev/null || true
+	systemctl daemon-reload || true
+
+	# Удаление конфигов и QR, созданных скриптом
+	rm -rf /root/vless-configs 2>/dev/null || true
+
+	# Удаление fail2ban пакета
+	if [[ -f /etc/debian_version ]]; then
+		apt purge -y fail2ban >/dev/null 2>&1 || apt remove -y fail2ban >/dev/null 2>&1 || true
+		apt autoremove -y >/dev/null 2>&1 || true
+	else
+		yum remove -y fail2ban >/dev/null 2>&1 || true
+	fi
+
+	# Удаление артефактов sudo-настройки, внесенных скриптом
+	rm -f /etc/sudoers.d/99-sudo-wheel 2>/dev/null || true
+	rm -f /usr/local/bin/grant-sudo 2>/dev/null || true
+
+	# Откат настроек firewall по запросу
+	if [[ "$RESET_FIREWALL" == true ]]; then
+		if [[ -f /etc/debian_version ]]; then
+			if command -v ufw >/dev/null 2>&1; then
+				ufw --force reset || true
+				ufw disable || true
+			fi
+		else
+			if command -v firewall-cmd >/dev/null 2>&1; then
+				# ВНИМАНИЕ: удаление ssh/http/https может лишить доступа. Делаем только если явный флаг --reset-firewall
+				firewall-cmd --permanent --remove-service=ssh || true
+				firewall-cmd --permanent --remove-service=http || true
+				firewall-cmd --permanent --remove-service=https || true
+				firewall-cmd --reload || true
+			fi
+		fi
+	fi
+
+	print_status "Удаление завершено. Возможно, потребуется перезапуск сервера."
+}
+
 # Функция вывода итоговой информации
 show_results() {
     clear
@@ -396,6 +550,11 @@ show_results() {
     
     echo -e "${GREEN}✅ Ваш VLESS+Reality VPN сервер готов к работе!${NC}"
     echo ""
+
+	# Подсказка по удалению
+	echo -e "${BLUE}🧹 Удаление:${NC}"
+	echo "   Команда: bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh) --uninstall --yes"
+	echo ""
     
 	# Печать QR-кодов в консоль
 	print_qr_codes_console
@@ -432,6 +591,12 @@ main() {
         exit 0
     fi
     
+    # Обработка аргумента удаления
+    if [[ "$1" == "--uninstall" || "$1" == "uninstall" ]]; then
+        uninstall_all "$@"
+        return
+    fi
+
     print_step "Начинаем установку VLESS+Reality VPN..."
     
     # Выполнение всех этапов
@@ -443,6 +608,7 @@ main() {
     create_xray_config
     setup_firewall
 	install_fail2ban
+	install_sudo_and_privilege_tools
     start_xray
     generate_client_configs
     

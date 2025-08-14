@@ -353,7 +353,14 @@ EOF
 		read -p "Введите имя нового пользователя: " NEW_USERNAME
 		if [[ -n "$NEW_USERNAME" ]]; then
 			/usr/local/bin/grant-sudo "$NEW_USERNAME"
-			print_status "Пользователь '$NEW_USERNAME' добавлен с sudo-привилегиями. Не забудьте задать пароль: passwd $NEW_USERNAME"
+			print_status "Пользователь '$NEW_USERNAME' добавлен с sudo-привилегиями."
+			read -p "Задать пароль для '$NEW_USERNAME' сейчас? (y/N): " -n 1 -r
+			echo ""
+			if [[ $REPLY =~ ^[Yy]$ ]]; then
+				passwd "$NEW_USERNAME"
+			else
+				print_warning "Пароль не задан. Вы можете сделать это позже: passwd $NEW_USERNAME"
+			fi
 		else
 			print_warning "Имя пользователя не задано, пропускаем создание."
 		fi

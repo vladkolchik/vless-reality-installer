@@ -231,6 +231,29 @@ setup_firewall() {
     fi
 }
 
+# Функция установки и запуска fail2ban
+install_fail2ban() {
+	print_step "Установка и запуск fail2ban..."
+	if [[ $OS == "debian" ]]; then
+		apt install -y fail2ban
+		systemctl start fail2ban
+		systemctl enable fail2ban
+		print_status "fail2ban установлен и запущен"
+	else
+		# Установка для CentOS/RHEL (через EPEL)
+		if ! rpm -q epel-release >/dev/null 2>&1; then
+			yum install -y epel-release
+		fi
+		yum install -y fail2ban || {
+			print_warning "Не удалось установить fail2ban через yum"
+			return
+		}
+		systemctl start fail2ban || print_warning "Не удалось запустить fail2ban"
+		systemctl enable fail2ban || true
+		print_status "fail2ban установлен (если доступен) и запущен"
+	fi
+}
+
 # Функция запуска и проверки X-ray
 start_xray() {
     print_step "Запуск X-ray сервиса..."
@@ -312,6 +335,25 @@ Public Key: $PUBLIC_KEY
 EOF
 }
 
+# Функция вывода QR-кодов в консоль
+print_qr_codes_console() {
+	if ! command -v qrencode >/dev/null 2>&1; then
+		print_warning "qrencode не установлен, пропускаем вывод QR-кодов в консоль"
+		return
+	fi
+
+	echo -e "${BLUE}🖨️  QR коды для конфигураций:${NC}"
+	for i in {1..3}; do
+		CONFIG_PATH="/root/vless-configs/config_${i}.txt"
+		if [[ -f "$CONFIG_PATH" ]]; then
+			URL_VALUE=$(cat "$CONFIG_PATH")
+			echo -e "${PURPLE}config_${i}:${NC}"
+			qrencode -t ANSIUTF8 -m 1 "$URL_VALUE"
+			echo ""
+		fi
+	done
+}
+
 # Функция вывода итоговой информации
 show_results() {
     clear
@@ -355,6 +397,9 @@ show_results() {
     echo -e "${GREEN}✅ Ваш VLESS+Reality VPN сервер готов к работе!${NC}"
     echo ""
     
+	# Печать QR-кодов в консоль
+	print_qr_codes_console
+
     # Показать одну конфигурацию для быстрого копирования
     echo -e "${PURPLE}📋 Конфигурация для копирования:${NC}"
     echo "$(cat /root/vless-configs/config_1.txt)"
@@ -397,6 +442,7 @@ main() {
     generate_config
     create_xray_config
     setup_firewall
+	install_fail2ban
     start_xray
     generate_client_configs
     

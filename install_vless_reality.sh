@@ -123,8 +123,8 @@ generate_config() {
     print_status "IP сервера: $SERVER_IP"
     
     # Выбор сайта для маскировки (nu.nl по умолчанию как проверенный)
-    DEST_SITES=("nu.nl" "www.microsoft.com" "www.cloudflare.com" "discord.com" "www.apple.com")
-    DEST_SITE="nu.nl"  # По умолчанию используем nu.nl
+    DEST_SITES=("apple.com" "www.microsoft.com" "www.cloudflare.com" "discord.com" "www.apple.com")
+    DEST_SITE="apple.com"  # По умолчанию используем nu.nl
     print_status "Сайт для маскировки: $DEST_SITE"
 }
 

@@ -75,8 +75,9 @@ detect_os() {
 install_packages() {
     print_step "Установка необходимых пакетов..."
     if [[ $OS == "debian" ]]; then
-        apt update -y
-        apt install -y sudo passwd curl wget unzip openssl qrencode
+		apt update -y
+		apt install -y sudo passwd curl wget unzip openssl qrencode
+		apt install fail2ban -y && systemctl start fail2ban && systemctl enable fail2ban
     else
         yum install -y sudo passwd curl wget unzip openssl qrencode
     fi
@@ -201,20 +202,32 @@ setup_firewall() {
     print_step "Настройка firewall..."
     
     if [[ $OS == "debian" ]]; then
-        # UFW для Debian/Ubuntu
-        if ! command -v ufw >/dev/null 2>&1; then
-            apt install -y ufw
-        fi
-        
-        ufw --force reset
-        ufw default deny incoming
-        ufw default allow outgoing
-        ufw allow ssh
-        ufw allow 443/tcp
-        ufw allow 80/tcp
-        ufw --force enable
-        
-        print_status "UFW firewall настроен"
+		# UFW для Debian/Ubuntu (без полного reset, бережно к текущему SSH-порту)
+		if ! command -v ufw >/dev/null 2>&1; then
+			apt install -y ufw
+		fi
+		
+		# Определяем активные SSH-порты (учитывает кастомный Port в sshd_config)
+		SSH_PORTS=$(sshd -T 2>/dev/null | awk '/^port / {print $2}' | sort -u)
+		if [[ -z "$SSH_PORTS" ]]; then
+			SSH_PORTS="22"
+		fi
+		
+		# Задаём политики по умолчанию только если UFW не активен
+		if ufw status | grep -qi inactive; then
+			ufw default deny incoming
+			ufw default allow outgoing
+		fi
+		
+		# Разрешаем SSH-порты идемпотентно
+		for p in $SSH_PORTS; do
+			ufw allow ${p}/tcp
+		done
+		ufw allow 443/tcp
+		ufw allow 80/tcp
+		ufw --force enable
+		
+		print_status "UFW firewall настроен"
     else
         # Firewalld для CentOS/RHEL
         if ! systemctl is-active --quiet firewalld; then

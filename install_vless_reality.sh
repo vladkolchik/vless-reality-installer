@@ -122,9 +122,9 @@ generate_config() {
     SERVER_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || curl -s icanhazip.com)
     print_status "IP сервера: $SERVER_IP"
     
-    # Выбор сайта для маскировки (nu.nl по умолчанию как проверенный)
-    DEST_SITES=("nu.nl" "www.microsoft.com" "www.cloudflare.com" "discord.com" "www.apple.com")
-    DEST_SITE="nu.nl"  # По умолчанию используем nu.nl
+    # Выбор сайта для маскировки (apple.com по умолчанию как проверенный)
+    DEST_SITES=("apple.com" "microsoft.com" "cloudflare.com" "discord.com")
+    DEST_SITE="apple.com"  # По умолчанию используем apple.com
     print_status "Сайт для маскировки: $DEST_SITE"
 }
 
@@ -180,7 +180,44 @@ create_xray_config() {
                     "tls"
                 ]
             }
-        }
+            },
+            {
+                "port": 80,
+                "protocol": "vless",
+                "settings": {
+                    "clients": [
+                        {
+                            "id": "$USER_UUID",
+                            "flow": "xtls-rprx-vision"
+                        }
+                    ],
+                    "decryption": "none"
+                },
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "dest": "$DEST_SITE:443",
+                        "serverNames": [
+                            "$DEST_SITE",
+                            "www.$DEST_SITE"
+                        ],
+                        "privateKey": "$PRIVATE_KEY",
+                        "shortIds": [
+                            "$SHORT_ID1",
+                            "$SHORT_ID2",
+                            "$SHORT_ID3"
+                        ]
+                    }
+                },
+                "sniffing": {
+                    "enabled": true,
+                    "destOverride": [
+                        "http",
+                        "tls"
+                    ]
+                }
+            }
     ],
     "outbounds": [
         {
@@ -357,17 +394,21 @@ generate_client_configs() {
     for i in {1..3}; do
         SHORT_ID_VAR="SHORT_ID$i"
         SHORT_ID_VALUE=${!SHORT_ID_VAR}
-        CONFIG_NAME="config_$i"
+        CONFIG_NAME_443="config_${i}_443"
+        CONFIG_NAME_80="config_${i}_80"
         
-        VLESS_URL="vless://$USER_UUID@$SERVER_IP:443?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=chrome&sni=$DEST_SITE&sid=$SHORT_ID_VALUE&flow=xtls-rprx-vision#$CONFIG_NAME"
+        VLESS_URL_443="vless://$USER_UUID@$SERVER_IP:443?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=chrome&sni=$DEST_SITE&sid=$SHORT_ID_VALUE&flow=xtls-rprx-vision#$CONFIG_NAME_443"
+        VLESS_URL_80="vless://$USER_UUID@$SERVER_IP:80?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=safari&sni=$DEST_SITE&sid=$SHORT_ID_VALUE&flow=xtls-rprx-vision#$CONFIG_NAME_80"
         
         # Сохранение URL в файл
-        echo "$VLESS_URL" > "/root/vless-configs/$CONFIG_NAME.txt"
+        echo "$VLESS_URL_443" > "/root/vless-configs/$CONFIG_NAME_443.txt"
+        echo "$VLESS_URL_80" > "/root/vless-configs/$CONFIG_NAME_80.txt"
         
         # Генерация QR кода
-        qrencode -o "/root/vless-configs/$CONFIG_NAME.png" "$VLESS_URL"
+        qrencode -o "/root/vless-configs/$CONFIG_NAME_443.png" "$VLESS_URL_443"
+        qrencode -o "/root/vless-configs/$CONFIG_NAME_80.png" "$VLESS_URL_80"
         
-        print_status "Конфигурация $CONFIG_NAME создана"
+        print_status "Конфигурации $CONFIG_NAME_443 и $CONFIG_NAME_80 созданы"
     done
     
     # Создание сводного файла
@@ -381,9 +422,9 @@ Public Key: $PUBLIC_KEY
 Сайт маскировки: $DEST_SITE
 
 Конфигурации:
-1. config_1 (ShortID: $SHORT_ID1)
-2. config_2 (ShortID: $SHORT_ID2)  
-3. config_3 (ShortID: $SHORT_ID3)
+    1. config_1_443 / config_1_80 (ShortID: $SHORT_ID1)
+    2. config_2_443 / config_2_80 (ShortID: $SHORT_ID2)  
+    3. config_3_443 / config_3_80 (ShortID: $SHORT_ID3)
 
 Клиентские приложения:
 - Android: Hiddify, v2rayNG, NekoBox
@@ -412,15 +453,17 @@ print_qr_codes_console() {
 	fi
 
 	echo -e "${BLUE}🖨️  QR коды для конфигураций:${NC}"
-	for i in {1..3}; do
-		CONFIG_PATH="/root/vless-configs/config_${i}.txt"
-		if [[ -f "$CONFIG_PATH" ]]; then
-			URL_VALUE=$(cat "$CONFIG_PATH")
-			echo -e "${PURPLE}config_${i}:${NC}"
-			qrencode -t ANSIUTF8 -m 1 "$URL_VALUE"
-			echo ""
-		fi
-	done
+    for i in {1..3}; do
+        for port_tag in 443 80; do
+            CONFIG_PATH="/root/vless-configs/config_${i}_${port_tag}.txt"
+            if [[ -f "$CONFIG_PATH" ]]; then
+                URL_VALUE=$(cat "$CONFIG_PATH")
+                echo -e "${PURPLE}config_${i}_${port_tag}:${NC}"
+                qrencode -t ANSIUTF8 -m 1 "$URL_VALUE"
+                echo ""
+            fi
+        done
+    done
 }
 
 # Функция удаления всех изменений, внесенных скриптом
@@ -508,6 +551,90 @@ uninstall_all() {
 	print_status "Удаление завершено. Возможно, потребуется перезапуск сервера."
 }
 
+# Установка локальной CLI-команды для удаления
+install_uninstall_cli() {
+	print_step "Установка локальной команды для удаления (vless-uninstall)..."
+	cat > /usr/local/bin/vless-uninstall << 'EOF'
+#!/bin/bash
+set -e
+
+AUTO_YES=false
+RESET_FIREWALL=false
+for arg in "$@"; do
+  case "$arg" in
+    --yes) AUTO_YES=true ;;
+    --reset-firewall) RESET_FIREWALL=true ;;
+  esac
+done
+
+if [[ "$AUTO_YES" != true ]]; then
+  echo "This will remove Xray, configs (/root/vless-configs), fail2ban, sudo helper and optional firewall rules."
+  read -p "Continue? (y/N): " -n 1 -r
+  echo ""
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    exit 0
+  fi
+fi
+
+# Stop services
+if systemctl list-unit-files | grep -q '^xray\.service'; then
+  systemctl stop xray || true
+  systemctl disable xray || true
+fi
+if systemctl list-unit-files | grep -q '^fail2ban\.service'; then
+  systemctl stop fail2ban || true
+  systemctl disable fail2ban || true
+fi
+
+# Try official remover
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove || true
+
+# Manual cleanup
+rm -f /etc/systemd/system/xray.service /etc/systemd/system/xray@.service 2>/dev/null || true
+rm -rf /usr/local/etc/xray 2>/dev/null || true
+rm -f /usr/local/bin/xray 2>/dev/null || true
+systemctl daemon-reload || true
+
+rm -rf /root/vless-configs 2>/dev/null || true
+
+# Remove fail2ban
+if [[ -f /etc/debian_version ]]; then
+  apt purge -y fail2ban >/dev/null 2>&1 || apt remove -y fail2ban >/dev/null 2>&1 || true
+  apt autoremove -y >/dev/null 2>&1 || true
+else
+  yum remove -y fail2ban >/dev/null 2>&1 || true
+fi
+
+# Remove sudo artifacts
+rm -f /etc/sudoers.d/99-sudo-wheel 2>/dev/null || true
+rm -f /usr/local/bin/grant-sudo 2>/dev/null || true
+
+# Optional firewall reset
+if [[ "$RESET_FIREWALL" == true ]]; then
+  if [[ -f /etc/debian_version ]]; then
+    if command -v ufw >/dev/null 2>&1; then
+      ufw --force reset || true
+      ufw disable || true
+    fi
+  else
+    if command -v firewall-cmd >/dev/null 2>&1; then
+      firewall-cmd --permanent --remove-service=ssh || true
+      firewall-cmd --permanent --remove-service=http || true
+      firewall-cmd --permanent --remove-service=https || true
+      firewall-cmd --reload || true
+    fi
+  fi
+fi
+
+echo "Done. You may want to reboot the server."
+EOF
+
+	chmod 755 /usr/local/bin/vless-uninstall
+	chown root:root /usr/local/bin/vless-uninstall
+	print_status "Команда 'vless-uninstall' установлена."
+}
+
 # Функция вывода итоговой информации
 show_results() {
     clear
@@ -531,8 +658,8 @@ show_results() {
     echo -e "${BLUE}📱 Конфигурации сохранены в:${NC}"
     echo "   📂 /root/vless-configs/"
     echo "   📄 README.txt - подробная информация"
-    echo "   🖼️  config_*.png - QR коды"
-    echo "   📝 config_*.txt - URL конфигурации"
+    echo "   🖼️  config_*_(443|80).png - QR коды"
+    echo "   📝 config_*_(443|80).txt - URL конфигурации"
     echo ""
     
     echo -e "${BLUE}🚀 Клиентские приложения:${NC}"
@@ -543,7 +670,7 @@ show_results() {
     echo ""
     
     echo -e "${YELLOW}⚡ Быстрый старт:${NC}"
-    echo "   1. Скачайте QR код: scp root@$SERVER_IP:/root/vless-configs/config_1.png ."
+    echo "   1. Скачайте QR код: scp root@$SERVER_IP:/root/vless-configs/config_1_443.png . (или config_1_80.png)"
     echo "   2. Отсканируйте QR код в VPN приложении"
     echo "   3. Подключитесь и проверьте IP: https://ifconfig.me"
     echo ""
@@ -553,15 +680,15 @@ show_results() {
 
 	# Подсказка по удалению
 	echo -e "${BLUE}🧹 Удаление:${NC}"
-	echo "   Команда: bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh) --uninstall --yes"
+	echo "   Команда: vless-uninstall --yes  (добавьте --reset-firewall при необходимости)"
 	echo ""
     
 	# Печать QR-кодов в консоль
 	print_qr_codes_console
 
     # Показать одну конфигурацию для быстрого копирования
-    echo -e "${PURPLE}📋 Конфигурация для копирования:${NC}"
-    echo "$(cat /root/vless-configs/config_1.txt)"
+    echo -e "${PURPLE}📋 Конфигурация для копирования (443):${NC}"
+    echo "$(cat /root/vless-configs/config_1_443.txt)"
     echo ""
     
     echo -e "${YELLOW}⚠️  Сохраните эти данные в безопасном месте!${NC}"
@@ -609,6 +736,7 @@ main() {
     setup_firewall
 	install_fail2ban
 	install_sudo_and_privilege_tools
+	install_uninstall_cli
     start_xray
     generate_client_configs
     

@@ -76,9 +76,9 @@ install_packages() {
     print_step "Установка необходимых пакетов..."
     if [[ $OS == "debian" ]]; then
         apt update -y
-        apt install -y sudo passwd curl wget unzip openssl qrencode
+        apt install -y curl wget unzip openssl qrencode
     else
-        yum install -y sudo passwd curl wget unzip openssl qrencode
+        yum install -y curl wget unzip openssl qrencode
     fi
 }
 
@@ -122,57 +122,10 @@ generate_config() {
     SERVER_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || curl -s icanhazip.com)
     print_status "IP сервера: $SERVER_IP"
     
-    # Определение страны сервера
-    print_step "Определение геолокации сервера..."
-    SERVER_COUNTRY=$(curl -s "http://ip-api.com/json/$SERVER_IP" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
-    if [[ -z "$SERVER_COUNTRY" ]]; then
-        # Fallback метод
-        SERVER_COUNTRY=$(curl -s "https://ipinfo.io/$SERVER_IP/country" 2>/dev/null || echo "Unknown")
-    fi
-    print_status "Страна сервера: $SERVER_COUNTRY"
-    
-    # Выбор сайта для маскировки в зависимости от страны
-    case "$SERVER_COUNTRY" in
-        "Netherlands"|"NL")
-            DEST_SITE="nu.nl"
-            print_status "🇳🇱 Нидерланды → nu.nl"
-            ;;
-        "United States"|"US")
-            DEST_SITE="www.microsoft.com"
-            print_status "🇺🇸 США → microsoft.com"
-            ;;
-        "Germany"|"DE")
-            DEST_SITE="www.spiegel.de"
-            print_status "🇩🇪 Германия → spiegel.de"
-            ;;
-        "United Kingdom"|"GB"|"UK")
-            DEST_SITE="www.bbc.com"
-            print_status "🇬🇧 Великобритания → bbc.com"
-            ;;
-        "France"|"FR")
-            DEST_SITE="www.lemonde.fr"
-            print_status "🇫🇷 Франция → lemonde.fr"
-            ;;
-        "Canada"|"CA")
-            DEST_SITE="www.cbc.ca"
-            print_status "🇨🇦 Канада → cbc.ca"
-            ;;
-        "Singapore"|"SG")
-            DEST_SITE="www.straitstimes.com"
-            print_status "🇸🇬 Сингапур → straitstimes.com"
-            ;;
-        "Japan"|"JP")
-            DEST_SITE="www.nhk.or.jp"
-            print_status "🇯🇵 Япония → nhk.or.jp"
-            ;;
-        *)
-            # По умолчанию для неизвестных стран
-            DEST_SITE="www.cloudflare.com"
-            print_status "🌍 $SERVER_COUNTRY → cloudflare.com (универсальный)"
-            ;;
-    esac
-    
-    print_status "Выбранный сайт для маскировки: $DEST_SITE"
+    # Выбор сайта для маскировки (nu.nl по умолчанию как проверенный)
+    DEST_SITES=("nu.nl" "www.microsoft.com" "www.cloudflare.com" "discord.com" "www.apple.com")
+    DEST_SITE="nu.nl"  # По умолчанию используем nu.nl
+    print_status "Сайт для маскировки: $DEST_SITE"
 }
 
 # Функция создания конфигурации X-ray

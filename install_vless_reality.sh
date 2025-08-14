@@ -272,7 +272,7 @@ generate_client_configs() {
         # Сохранение URL в файл
         echo "$VLESS_URL" > "/root/vless-configs/$CONFIG_NAME.txt"
         
-        # Генерация QR кода в файл
+        # Генерация QR кода
         qrencode -o "/root/vless-configs/$CONFIG_NAME.png" "$VLESS_URL"
         
         print_status "Конфигурация $CONFIG_NAME создана"
@@ -312,48 +312,12 @@ Public Key: $PUBLIC_KEY
 EOF
 }
 
-# Функция отображения QR кодов в консоли
-show_qr_codes() {
-    print_step "Отображение QR кодов конфигураций..."
-    echo ""
-    
-    for i in {1..3}; do
-        CONFIG_NAME="config_$i"
-        SHORT_ID_VAR="SHORT_ID$i"
-        SHORT_ID_VALUE=${!SHORT_ID_VAR}
-        
-        VLESS_URL="vless://$USER_UUID@$SERVER_IP:443?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=chrome&sni=$DEST_SITE&sid=$SHORT_ID_VALUE&flow=xtls-rprx-vision#$CONFIG_NAME"
-        
-        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${GREEN}📱 QR код для конфигурации: ${YELLOW}$CONFIG_NAME${NC} ${GREEN}(ShortID: $SHORT_ID_VALUE)${NC}"
-        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo ""
-        
-        # Генерация QR кода в консоль
-        qrencode -t ANSIUTF8 "$VLESS_URL"
-        
-        echo ""
-        echo -e "${PURPLE}📋 URL для ручного ввода:${NC}"
-        echo "$VLESS_URL"
-        echo ""
-        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo ""
-        
-        # Пауза между QR кодами для удобства просмотра
-        if [[ $i -lt 3 ]]; then
-            echo -e "${YELLOW}⏳ Нажмите Enter для показа следующего QR кода...${NC}"
-            read -r
-            echo ""
-        fi
-    done
-}
-
 # Функция вывода итоговой информации
 show_results() {
     clear
     echo -e "${GREEN}"
     echo "╔════════════════════════════════════════════════════════════════╗"
-    echo "║                    УСТАНОВКА ЗАВЕРШЕНА!                       ║"
+    echo "║                    УСТАНОВКА ЗАВЕРШЕНА!                        ║"
     echo "╚════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     
@@ -438,9 +402,6 @@ main() {
     
     # Вывод результатов
     show_results
-    
-    # Отображение QR кодов в консоли
-    show_qr_codes
 }
 
 # Обработка ошибок

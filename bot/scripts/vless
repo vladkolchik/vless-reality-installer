@@ -57,6 +57,7 @@ Commands:
   show <name|uuid>    Show client URLs and write QR PNGs to ${OUTPUT_DIR}
   del <name|uuid>     Remove client from all VLESS inbounds
   restart             Restart xray service
+  fix                 Fix Xray file permissions and restart service
   doctor              Quick diagnosis: ports, service, last logs
 EOF
 }
@@ -214,24 +215,115 @@ show_client() {
   fi
 }
 
+fix_xray_permissions() {
+  print_info "Fixing Xray configuration permissions..."
+  
+  # Fix config file permissions
+  if [[ -f "$CONFIG_PATH" ]]; then
+    chown root:root "$CONFIG_PATH" 2>/dev/null || true
+    chmod 644 "$CONFIG_PATH" 2>/dev/null || true
+    print_info "Fixed permissions for $CONFIG_PATH"
+  fi
+  
+  # Fix directory permissions
+  local config_dir="/usr/local/etc/xray"
+  if [[ -d "$config_dir" ]]; then
+    chown -R root:root "$config_dir" 2>/dev/null || true
+    chmod 755 "$config_dir" 2>/dev/null || true
+    find "$config_dir" -type f -name "*.json" -exec chmod 644 {} \; 2>/dev/null || true
+    print_info "Fixed permissions for $config_dir"
+  fi
+  
+  # Fix xray binary permissions
+  if [[ -f "/usr/local/bin/xray" ]]; then
+    chown root:root "/usr/local/bin/xray" 2>/dev/null || true
+    chmod 755 "/usr/local/bin/xray" 2>/dev/null || true
+    print_info "Fixed permissions for /usr/local/bin/xray"
+  fi
+}
+
 restart_xray() {
-  if systemctl list-unit-files | grep -q '^xray\.service'; then
-    systemctl restart xray
-    sleep 1
-    systemctl is-active --quiet xray && print_info "xray restarted" || { print_err "xray not active"; exit 1; }
+  # First, fix permissions that might cause issues
+  fix_xray_permissions
+  
+  # Try multiple possible service names
+  for service_name in "xray" "xray.service"; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${service_name}"; then
+      print_info "Restarting $service_name..."
+      if systemctl restart "$service_name" 2>/dev/null; then
+        sleep 3
+        if systemctl is-active --quiet "$service_name"; then
+          print_info "$service_name successfully restarted"
+          return 0
+        else
+          print_err "$service_name restarted but not active"
+          print_info "Service status:"
+          systemctl status "$service_name" --no-pager -l | head -15 || true
+          print_info "Recent logs:"
+          journalctl -u "$service_name" -n 10 --no-pager | cat || true
+          return 1
+        fi
+      else
+        print_err "Failed to restart $service_name"
+        systemctl status "$service_name" --no-pager -l | head -10 || true
+        return 1
+      fi
+    fi
+  done
+  
+  # If no service found, try to restart anyway (maybe it exists but not listed)
+  print_warn "xray service not found in list, attempting restart anyway..."
+  if systemctl restart xray 2>/dev/null; then
+    sleep 3
+    if systemctl is-active --quiet xray; then
+      print_info "xray successfully restarted"
+      return 0
+    else
+      print_err "xray restarted but not active"
+      print_info "Service status:"
+      systemctl status xray --no-pager -l | head -15 || true
+      return 1
+    fi
   else
-    print_err "xray service not found"
-    exit 1
+    print_err "xray service not found or failed to restart"
+    print_info "Available services with 'xray' in name:"
+    systemctl list-unit-files 2>/dev/null | grep -i xray || echo "  (none found)"
+    return 1
   fi
 }
 
 doctor() {
-  echo -e "${BLUE}== Service ==${NC}"
-  systemctl status xray | sed -n '1,20p' | cat || true
+  echo -e "${BLUE}== Service Status ==${NC}"
+  for service_name in "xray" "xray.service"; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${service_name}"; then
+      echo "Service: $service_name"
+      systemctl status "$service_name" --no-pager -l | head -15 || true
+      break
+    fi
+  done
+  
+  echo -e "${BLUE}== Service List ==${NC}"
+  systemctl list-unit-files 2>/dev/null | grep -i xray || echo "No xray services found"
+  
   echo -e "${BLUE}== Last logs ==${NC}"
-  journalctl -u xray -n 50 --no-pager | cat || true
+  journalctl -u xray -n 30 --no-pager | cat || true
+  
+  echo -e "${BLUE}== Configuration ==${NC}"
+  if [[ -f "$CONFIG_PATH" ]]; then
+    echo "Config file exists: $CONFIG_PATH"
+    echo "Config size: $(wc -c < "$CONFIG_PATH" 2>/dev/null || echo "unknown") bytes"
+    # Test config validity
+    if command -v xray >/dev/null 2>&1; then
+      echo "Config test:"
+      xray -test -config "$CONFIG_PATH" 2>&1 | head -5 || echo "Config test failed"
+    fi
+  else
+    echo "Config file missing: $CONFIG_PATH"
+  fi
+  
   echo -e "${BLUE}== Ports ==${NC}"
-  ss -ltnp | grep -E ':443|:80' || true
+  ss -ltnp | grep -E ':443|:80' || echo "No services listening on ports 443/80"
+  
   echo -e "${BLUE}== Public IP ==${NC}"
   curl -4 -fsS https://api.ipify.org || echo "(unavailable)"
 }
@@ -259,6 +351,11 @@ main() {
       ;;
     restart)
       require_root
+      restart_xray
+      ;;
+    fix)
+      require_root
+      fix_xray_permissions
       restart_xray
       ;;
     doctor)

@@ -70,6 +70,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE, settings
         "• /show &lt;name|uuid&gt; — показать конфигурацию\n"
         "• /del &lt;name|uuid&gt; — удалить клиента\n"
         "• /restart — перезапустить Xray\n"
+        "• /fix — исправить права и перезапустить\n"
         "• /doctor — диагностика сервера\n\n"
         "💡 <i>Используйте /help для повторного вызова этого меню</i>"
     )
@@ -354,6 +355,33 @@ async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE, settin
         )
 
 
+async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
+    if not await _guard_admin(update, context, settings):
+        return
+        
+    await update.message.reply_text("🔧 <b>Исправление прав доступа и перезапуск...</b>", parse_mode="HTML")
+    await update.message.chat.send_action("typing")
+    
+    res = run_vless(settings, ["fix"])
+    
+    if res.returncode == 0:
+        await update.message.reply_text(
+            "✅ <b>Исправление завершено успешно</b>\n\n"
+            "🔧 Права доступа исправлены\n"
+            "🔄 Xray перезапущен\n\n"
+            "🚀 <i>Сервис должен работать нормально</i>",
+            parse_mode="HTML"
+        )
+    else:
+        output = res.stdout or "Неизвестная ошибка"
+        await update.message.reply_text(
+            f"❌ <b>Ошибка при исправлении:</b>\n"
+            f"<pre>{html_escape(output[:3000])}</pre>\n\n"
+            f"🪐 <i>Попробуйте диагностику:</i> /doctor",
+            parse_mode="HTML"
+        )
+
+
 async def cmd_doctor(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
     if not await _guard_admin(update, context, settings):
         return
@@ -365,8 +393,10 @@ async def cmd_doctor(update: Update, context: ContextTypes.DEFAULT_TYPE, setting
     output = res.stdout or "Нет вывода"
     
     # Format the output with emojis and structure
-    formatted_output = output.replace("== Service ==", "🚀 <b>Статус сервиса</b>")
+    formatted_output = output.replace("== Service Status ==", "🚀 <b>Статус сервиса</b>")
+    formatted_output = formatted_output.replace("== Service List ==", "📋 <b>Список служб</b>")
     formatted_output = formatted_output.replace("== Last logs ==", "📜 <b>Последние логи</b>")
+    formatted_output = formatted_output.replace("== Configuration ==", "⚙️ <b>Конфигурация</b>")
     formatted_output = formatted_output.replace("== Ports ==", "🔌 <b>Порты</b>")
     formatted_output = formatted_output.replace("== Public IP ==", "🌐 <b>Внешний IP</b>")
     
@@ -397,6 +427,7 @@ def build_app(settings: Settings) -> Application:
     app.add_handler(CommandHandler("show", lambda u, c: cmd_show(u, c, settings)))
     app.add_handler(CommandHandler("del", lambda u, c: cmd_del(u, c, settings)))
     app.add_handler(CommandHandler("restart", lambda u, c: cmd_restart(u, c, settings)))
+    app.add_handler(CommandHandler("fix", lambda u, c: cmd_fix(u, c, settings)))
     app.add_handler(CommandHandler("doctor", lambda u, c: cmd_doctor(u, c, settings)))
 
     return app

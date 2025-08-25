@@ -88,6 +88,8 @@
                 <div class="cmd"><button class="copy">Копировать</button>/show iPhone_John</div>
                 <div class="cmd"><button class="copy">Копировать</button>/del iPhone_John</div>
                 <div class="cmd"><button class="copy">Копировать</button>/restart</div>
+                <div class="cmd"><button class="copy">Копировать</button>/block_torrents</div>
+                <div class="cmd"><button class="copy">Копировать</button>/unblock_torrents</div>
                 <div class="cmd"><button class="copy">Копировать</button>/doctor</div>
                 <ul class="list">
                     <li><code>/start</code> или <code>/help</code> — показать меню команд с описанием.</li>
@@ -96,6 +98,8 @@
                     <li><code>/show &lt;name|uuid&gt;</code> — показать конфигурацию конкретного клиента с ссылками и QR.</li>
                     <li><code>/del &lt;name|uuid&gt;</code> — удалить клиента с подтверждением. После удаления рекомендуется <code>/restart</code>.</li>
                     <li><code>/restart</code> — перезапустить Xray для применения изменений конфигурации.</li>
+                    <li><code>/block_torrents</code> — заблокировать торрент-трафик (BitTorrent протокол, порты 6881-6889, популярные домены).</li>
+                    <li><code>/unblock_torrents</code> — разблокировать торрент-трафик, весь трафик снова проходит через VPN.</li>
                     <li><code>/doctor</code> — диагностика: статус сервиса, логи, порты, внешний IP.</li>
                 </ul>
                 <p class="note">🔒 Бот отвечает только администраторам (ID из <code>TELEGRAM_ADMINS</code> в <code>/etc/vless-bot.env</code>). Неавторизованные пользователи игнорируются.</p>

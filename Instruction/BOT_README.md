@@ -56,6 +56,8 @@ sudo bash bot/scripts/setup_vless_bot.sh
 - `/del name_or_uuid` — удалить клиента (с подтверждением)
 - `/restart` — перезапуск Xray сервиса
 - `/fix` — исправить права доступа и перезапустить (решает permission denied)
+- `/block_torrents` — заблокировать торрент-трафик (BitTorrent, порты, домены)
+- `/unblock_torrents` — разблокировать торрент-трафик
 - `/doctor` — полная диагностика сервера
 
 ## CLI `vless`
@@ -66,6 +68,8 @@ sudo bash bot/scripts/setup_vless_bot.sh
 - `sudo vless del <name|uuid>` — удалить клиента
 - `sudo vless restart` — перезапустить Xray (автоисправление прав)
 - `sudo vless fix` — исправить права доступа и перезапустить
+- `sudo vless block-torrents` — заблокировать торрент-трафик
+- `sudo vless unblock-torrents` — разблокировать торрент-трафик
 - `vless doctor` — диагностика: сервис, конфигурация, порты, IP
 
 ## Systemd управление

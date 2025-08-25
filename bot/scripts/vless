@@ -1,0 +1,278 @@
+#!/bin/bash
+
+# vless CLI — manage Xray VLESS+Reality clients and quick diagnostics
+# Commands:
+#   vless add <name>
+#   vless list
+#   vless show <name|uuid>
+#   vless del <name|uuid>
+#   vless restart
+#   vless doctor
+
+set -Eeuo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+CONFIG_PATH="/usr/local/etc/xray/config.json"
+OUTPUT_DIR="/root/vless-configs"
+
+require_root() {
+  if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+    echo -e "${RED}[ERROR]${NC} This command must run as root (sudo)." >&2
+    exit 1
+  fi
+}
+
+require_file() {
+  local path="$1"
+  if [[ ! -f "$path" ]]; then
+    echo -e "${RED}[ERROR]${NC} File not found: $path" >&2
+    exit 1
+  fi
+}
+
+require_dep() {
+  local bin="$1"
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    echo -e "${RED}[ERROR]${NC} Required dependency not found: $bin" >&2
+    echo -e "${YELLOW}[HINT]${NC} Install: apt install -y $bin  or  yum/dnf install -y $bin" >&2
+    exit 1
+  fi
+}
+
+print_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
+print_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+print_err()  { echo -e "${RED}[ERROR]${NC} $*"; }
+
+usage() {
+  cat <<EOF
+Usage: vless <command> [args]
+Commands:
+  add <name>          Add client with given name (stored in email field)
+  list                List clients (uuid and name)
+  show <name|uuid>    Show client URLs and write QR PNGs to ${OUTPUT_DIR}
+  del <name|uuid>     Remove client from all VLESS inbounds
+  restart             Restart xray service
+  doctor              Quick diagnosis: ports, service, last logs
+EOF
+}
+
+# Sanitize a string for filenames and tags
+sanitize() {
+  local s="$*"
+  # Replace non [A-Za-z0-9._-] with _ and trim length to 50
+  s="$(echo -n "$s" | sed -E 's/[^A-Za-z0-9._-]+/_/g' | cut -c1-50)"
+  # Avoid empty
+  if [[ -z "$s" ]]; then s="vpn_profile"; fi
+  echo -n "$s"
+}
+
+# Read common Reality parameters from config
+read_reality_params() {
+  require_file "$CONFIG_PATH"
+  require_dep jq
+  # Choose first VLESS inbound (prefer port 443)
+  local jq_base='.inbounds[] | select(.protocol=="vless")'
+  PRIVATE_KEY=$(jq -r "${jq_base} | .streamSettings.realitySettings.privateKey" "$CONFIG_PATH" | head -n1)
+  if [[ -z "$PRIVATE_KEY" || "$PRIVATE_KEY" == "null" ]]; then
+    print_err "Could not read Reality privateKey from $CONFIG_PATH"
+    exit 1
+  fi
+  # Derive public key from private
+  require_dep xray
+  local xout
+  if xout=$(xray x25519 -i "$PRIVATE_KEY" 2>/dev/null); then
+    PUBLIC_KEY=$(echo "$xout" | awk '/Public key:/ {print $3; exit}')
+  fi
+  if [[ -z "${PUBLIC_KEY:-}" ]]; then
+    print_err "Failed to derive public key from private key"
+    exit 1
+  fi
+  # Short ID: use first one
+  SHORT_ID=$(jq -r "${jq_base} | .streamSettings.realitySettings.shortIds[0]" "$CONFIG_PATH" | head -n1)
+  if [[ -z "$SHORT_ID" || "$SHORT_ID" == "null" ]]; then
+    print_warn "No shortIds found; URLs will omit sid parameter"
+    SHORT_ID=""
+  fi
+  # SNI / dest domain
+  DEST_SITE=$(jq -r "(${jq_base} | .streamSettings.realitySettings.serverNames[0]) // (${jq_base} | .streamSettings.realitySettings.dest)" "$CONFIG_PATH" | head -n1)
+  if [[ -z "$DEST_SITE" || "$DEST_SITE" == "null" ]]; then
+    DEST_SITE="apple.com"
+  fi
+  # Normalize DEST_SITE if includes :port
+  DEST_SITE=${DEST_SITE%%:*}
+}
+
+get_server_ip() {
+  if SERVER_IP=$(curl -4 -fsS https://api.ipify.org); then
+    :
+  else
+    SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+  fi
+  if [[ -z "${SERVER_IP:-}" ]]; then
+    print_warn "Could not determine public IP automatically. Using local address."
+    SERVER_IP="127.0.0.1"
+  fi
+}
+
+list_clients() {
+  require_file "$CONFIG_PATH"
+  require_dep jq
+  jq -r '
+    def clients: [.inbounds[] | select(.protocol=="vless") | .settings.clients[]?] | unique_by(.id);
+    clients | if length==0 then "No clients" else ("UUID                                  | NAME"), ("--------------------------------------|----------------"), (.[] | ( (.id // "-") + " | " + (.email // "-") )) end
+  ' "$CONFIG_PATH"
+}
+
+add_client() {
+  local name="$1"; shift || true
+  if [[ -z "$name" ]]; then print_err "Name required"; exit 1; fi
+  require_file "$CONFIG_PATH"
+  require_dep jq
+  local uuid
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuid=$(uuidgen)
+  else
+    uuid=$(cat /proc/sys/kernel/random/uuid)
+  fi
+  local email="$name"
+  # Update both VLESS inbounds
+  local tmp
+  tmp=$(mktemp)
+  jq --arg uuid "$uuid" --arg email "$email" '
+    (.inbounds[] | select(.protocol=="vless") | .settings.clients) |= (
+      if any(.id == $uuid) then . else . + [{id:$uuid,flow:"xtls-rprx-vision",email:$email}] end
+    )
+  ' "$CONFIG_PATH" > "$tmp"
+  mv "$tmp" "$CONFIG_PATH"
+  print_info "Added client: $email ($uuid)"
+  echo "$uuid"
+}
+
+remove_client() {
+  local key="$1"; shift || true
+  if [[ -z "$key" ]]; then print_err "Name or UUID required"; exit 1; fi
+  require_file "$CONFIG_PATH"
+  require_dep jq
+  local tmp
+  tmp=$(mktemp)
+  jq --arg k "$key" '
+    (.inbounds[] | select(.protocol=="vless") | .settings.clients) |= (
+      map(select((.id != $k) and ((.email // "") != $k)))
+    )
+  ' "$CONFIG_PATH" > "$tmp"
+  mv "$tmp" "$CONFIG_PATH"
+  print_info "Removed client entries matching: $key"
+}
+
+show_client() {
+  local key="$1"; shift || true
+  if [[ -z "$key" ]]; then print_err "Name or UUID required"; exit 1; fi
+  require_file "$CONFIG_PATH"
+  require_dep jq
+  read_reality_params
+  get_server_ip
+
+  # Find uuid and name (email)
+  local uuid email
+  readarray -t arr < <(jq -r --arg k "$key" '
+    [.inbounds[] | select(.protocol=="vless") | .settings.clients[]?]
+    | unique_by(.id)
+    | map(select((.id==$k) or ((.email // "")==$k)))
+    | if length>0 then [.[] | (.id//""), (.email//"")] else [] end | .[]
+  ' "$CONFIG_PATH")
+  if (( ${#arr[@]} >= 2 )); then
+    uuid="${arr[0]}"; email="${arr[1]}"
+  else
+    print_err "Client not found: $key"
+    exit 1
+  fi
+
+  local safe
+  safe=$(sanitize "${email:-$uuid}")
+  mkdir -p "$OUTPUT_DIR"
+
+  # URLs
+  local sid_q=""; if [[ -n "$SHORT_ID" ]]; then sid_q="&sid=$SHORT_ID"; fi
+  local URL_443="vless://$uuid@$SERVER_IP:443?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=chrome&sni=$DEST_SITE${sid_q}&flow=xtls-rprx-vision#$safe"
+  local URL_80="vless://$uuid@$SERVER_IP:80?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=safari&sni=$DEST_SITE${sid_q}&flow=xtls-rprx-vision#$safe"
+
+  echo "443: $URL_443"
+  echo "80:  $URL_80"
+
+  # QR codes
+  if command -v qrencode >/dev/null 2>&1; then
+    qrencode -o "$OUTPUT_DIR/${safe}_443.png" "$URL_443"
+    qrencode -o "$OUTPUT_DIR/${safe}_80.png"  "$URL_80"
+    print_info "QR saved: $OUTPUT_DIR/${safe}_443.png, ${safe}_80.png"
+  else
+    print_warn "qrencode not installed; skipped QR generation"
+  fi
+}
+
+restart_xray() {
+  if systemctl list-unit-files | grep -q '^xray\.service'; then
+    systemctl restart xray
+    sleep 1
+    systemctl is-active --quiet xray && print_info "xray restarted" || { print_err "xray not active"; exit 1; }
+  else
+    print_err "xray service not found"
+    exit 1
+  fi
+}
+
+doctor() {
+  echo -e "${BLUE}== Service ==${NC}"
+  systemctl status xray | sed -n '1,20p' | cat || true
+  echo -e "${BLUE}== Last logs ==${NC}"
+  journalctl -u xray -n 50 --no-pager | cat || true
+  echo -e "${BLUE}== Ports ==${NC}"
+  ss -ltnp | grep -E ':443|:80' || true
+  echo -e "${BLUE}== Public IP ==${NC}"
+  curl -4 -fsS https://api.ipify.org || echo "(unavailable)"
+}
+
+main() {
+  local cmd="${1:-}"; shift || true
+  case "$cmd" in
+    add)
+      require_root
+      local name="${1:-}"; shift || true
+      add_client "$name"
+      ;;
+    list)
+      list_clients
+      ;;
+    show)
+      local key="${1:-}"; shift || true
+      read_reality_params
+      show_client "$key"
+      ;;
+    del)
+      require_root
+      local key="${1:-}"; shift || true
+      remove_client "$key"
+      ;;
+    restart)
+      require_root
+      restart_xray
+      ;;
+    doctor)
+      doctor
+      ;;
+    -h|--help|help|"")
+      usage
+      ;;
+    *)
+      print_err "Unknown command: $cmd"; usage; exit 1;
+      ;;
+  esac
+}
+
+main "$@"
+
+

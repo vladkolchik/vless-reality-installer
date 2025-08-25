@@ -3,7 +3,8 @@ import re
 import shlex
 import subprocess
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from html import escape as html_escape
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -80,20 +81,111 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: 
         await update.message.reply_text("Usage: /add <name>")
         return
     name = " ".join(context.args).strip()
-    res = run_vless(settings, ["add", name])
-    await update.message.reply_text(res.stdout or "(no output)")
-    # Generate URLs and QR, then send
-    await cmd_show(update, context, settings)
+    add_res = run_vless(settings, ["add", name])
+
+    # Extract UUID from add output
+    uuid_match = re.search(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", add_res.stdout or "")
+    uuid = uuid_match.group(0) if uuid_match else ""
+
+    # Generate URLs and QR by invoking show on UUID (preferred) or name
+    key = uuid or name
+    show_res = run_vless(settings, ["show", key])
+    url443, url80 = None, None
+    for s in (show_res.stdout or "").splitlines():
+        s = s.strip()
+        if s.startswith("443:"):
+            url443 = s.split(':', 1)[1].strip()
+        elif s.startswith("80:"):
+            url80 = s.split(':', 1)[1].strip()
+
+    # Compose single rich message
+    title = f"✅ Клиент добавлен: {html_escape(name)}"
+    uuid_line = f"UUID: <code>{html_escape(uuid)}</code>" if uuid else ""
+    body = []
+    if url443:
+        body.append(f"443: <code>{html_escape(url443)}</code>")
+    if url80:
+        body.append(f"80:  <code>{html_escape(url80)}</code>")
+    text = "\n".join([t for t in (title, uuid_line) if t] + body)
+    try:
+        await update.message.reply_text(text, parse_mode="HTML")
+    except Exception:
+        await update.message.reply_text(f"Client added: {name}\nUUID: {uuid}\n443: {url443 or ''}\n80: {url80 or ''}")
+
+    # Send QR images
+    safe = sanitize_name(name or uuid)
+    for suffix in ("443", "80"):
+        path = os.path.join(settings.output_dir, f"{safe}_{suffix}.png")
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as f:
+                    await update.message.reply_photo(f, caption=os.path.basename(path))
+            except Exception:
+                pass
 
 
 async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
     if not await _guard_admin(update, context, settings):
         return
-    res = run_vless(settings, ["list"])
-    out = res.stdout.strip()
-    if not out:
-        out = "(no output)"
-    await update.message.reply_text(out)
+    # Parse list output: header lines + entries "UUID | NAME"
+    res = run_vless(settings, ["list"]) 
+    lines = (res.stdout or "").splitlines()
+    entries: List[Tuple[str, str]] = []  # (uuid, name)
+    for ln in lines:
+        ln = ln.strip()
+        # Match UUID | NAME
+        m = re.match(r"^([0-9a-fA-F-]{20,})\s*\|\s*(.*)$", ln)
+        if m:
+            uuid = m.group(1).strip()
+            name = (m.group(2) or "").strip()
+            if name in ("-", ""):
+                name = uuid
+            entries.append((uuid, name))
+
+    if not entries:
+        await update.message.reply_text("(no clients)")
+        return
+
+    # Limit to first 10 to avoid flooding; user can use /show for details
+    limit = 10
+    total = len(entries)
+    for idx, (uuid, name) in enumerate(entries[:limit], start=1):
+        # Use vless show to generate URLs and QR
+        show = run_vless(settings, ["show", uuid])
+        url443, url80 = None, None
+        for s in (show.stdout or "").splitlines():
+            s = s.strip()
+            if s.startswith("443:"):
+                url443 = s.split(':', 1)[1].strip()
+            elif s.startswith("80:"):
+                url80 = s.split(':', 1)[1].strip()
+
+        safe = sanitize_name(name or uuid)
+        header = f"{idx}. {html_escape(name)}\nUUID: <code>{html_escape(uuid)}</code>"
+        body = []
+        if url443:
+            body.append(f"443: <code>{html_escape(url443)}</code>")
+        if url80:
+            body.append(f"80:  <code>{html_escape(url80)}</code>")
+        text = header + ("\n" + "\n".join(body) if body else "")
+        try:
+            await update.message.reply_text(text, parse_mode="HTML")
+        except Exception:
+            # Fallback without formatting
+            await update.message.reply_text(f"{name}\nUUID: {uuid}\n443: {url443 or ''}\n80: {url80 or ''}")
+
+        # Send QR images if available
+        for suffix in ("443", "80"):
+            path = os.path.join(settings.output_dir, f"{safe}_{suffix}.png")
+            if os.path.exists(path):
+                try:
+                    with open(path, "rb") as f:
+                        await update.message.reply_photo(f, caption=os.path.basename(path))
+                except Exception:
+                    pass
+
+    if total > limit:
+        await update.message.reply_text(f"Shown first {limit} of {total}. Use /show &lt;name|uuid&gt; for a specific client.", parse_mode="HTML")
 
 
 async def cmd_show(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:

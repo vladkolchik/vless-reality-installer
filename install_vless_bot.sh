@@ -4,10 +4,13 @@
 # Repo: https://github.com/vladkolchik/vless-reality-installer
 # Bot folder: https://github.com/vladkolchik/vless-reality-installer/tree/main/bot
 # Usage examples:
+#   # Install (interactive)
 #   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh)
-#   # Non-interactive:
+#   # Install (non-interactive)
 #   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh) --non-interactive
-#   # Override base (optional):
+#   # Update to latest bot/CLI from repo
+#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh) update
+#   # Override base (optional)
 #   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh) \
 #        --raw-base https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main
 # Options:
@@ -30,12 +33,18 @@ have(){ command -v "$1" >/dev/null 2>&1; }
 
 RAW_BASE="${RAW_BASE:-}"
 NON_INTERACTIVE=false
+MODE="install"
 
-for a in "$@"; do
-  case "$a" in
-    --raw-base) shift; RAW_BASE="${1:-}"; shift || true ;;
-    --non-interactive) NON_INTERACTIVE=true; shift || true ;;
-    *) shift || true ;;
+while (( "$#" )); do
+  case "$1" in
+    --raw-base)
+      RAW_BASE="${2:-}"; shift 2 || true ;;
+    --non-interactive)
+      NON_INTERACTIVE=true; shift || true ;;
+    update)
+      MODE="update"; shift || true ;;
+    *)
+      shift || true ;;
   esac
 done
 
@@ -72,15 +81,18 @@ curl -fsSL "$RAW_BASE/bot/requirements.txt" -o "$tmpdir/requirements.txt"
 curl -fsSL "$RAW_BASE/bot/scripts/vless" -o "$tmpdir/vless"
 
 install -m 755 "$tmpdir/vless" /usr/local/bin/vless
-info "Installed CLI: /usr/local/bin/vless"
+info "Installed/updated CLI: /usr/local/bin/vless"
 
 mkdir -p "$BOT_DST_DIR"
 install -m 644 "$tmpdir/requirements.txt" "$BOT_DST_DIR/requirements.txt"
 install -m 644 "$tmpdir/telegram_bot.py" "$BOT_DST_DIR/telegram_bot.py"
 chown -R root:root "$BOT_DST_DIR"
 
-info "Creating Python venv and installing requirements"
-python3 -m venv "$BOT_DST_DIR/.venv"
+if [[ ! -d "$BOT_DST_DIR/.venv" ]]; then
+  info "Creating Python venv"
+  python3 -m venv "$BOT_DST_DIR/.venv"
+fi
+info "Installing/upgrading Python deps"
 "$BOT_DST_DIR/.venv/bin/pip" install --upgrade pip >/dev/null
 "$BOT_DST_DIR/.venv/bin/pip" install -r "$BOT_DST_DIR/requirements.txt"
 
@@ -109,6 +121,7 @@ EOF
   chown root:root "$ENV_DST"
 fi
 
+if [[ ! -f "$SERVICE_DST" ]]; then
 info "Creating systemd service at $SERVICE_DST"
 cat > "$SERVICE_DST" <<EOF
 [Unit]
@@ -129,12 +142,19 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
+fi
 
-info "Enabling and starting service"
 systemctl daemon-reload
-systemctl enable --now vless-bot
-systemctl status vless-bot | cat || true
-
-info "Done. Edit $ENV_DST if needed and restart: systemctl restart vless-bot"
+if [[ "$MODE" == "update" ]]; then
+  info "Updating bot files complete; restarting service"
+  systemctl restart vless-bot || systemctl enable --now vless-bot
+  systemctl status vless-bot | cat || true
+  info "Update done."
+else
+  info "Enabling and starting service"
+  systemctl enable --now vless-bot
+  systemctl status vless-bot | cat || true
+  info "Install done. Edit $ENV_DST if needed and restart: systemctl restart vless-bot"
+fi
 
 

@@ -71,6 +71,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE, settings
         "• /del &lt;name|uuid&gt; — удалить клиента\n"
         "• /restart — перезапустить Xray\n"
         "• /fix — исправить права и перезапустить\n"
+        "• /block_torrents — заблокировать торренты\n"
+        "• /unblock_torrents — разблокировать торренты\n"
         "• /doctor — диагностика сервера\n\n"
         "💡 <i>Используйте /help для повторного вызова этого меню</i>"
     )
@@ -411,6 +413,58 @@ async def cmd_doctor(update: Update, context: ContextTypes.DEFAULT_TYPE, setting
         await update.message.reply_text(f"🪐 <b>Диагностика сервера:</b>\n\n<pre>{html_escape(formatted_output)}</pre>", parse_mode="HTML")
 
 
+async def cmd_block_torrents(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
+    if not await _guard_admin(update, context, settings):
+        return
+        
+    await update.message.reply_text("🚫 <b>Блокировка торрент-трафика...</b>", parse_mode="HTML")
+    await update.message.chat.send_action("typing")
+
+    res = run_vless(settings, ["block-torrents"])
+    if res.returncode == 0:
+        await update.message.reply_text(
+            "✅ <b>Торренты заблокированы!</b>\n\n"
+            "🚫 <b>Заблокировано:</b>\n"
+            "• BitTorrent протокол\n"
+            "• Порты 6881-6889, 51413\n"
+            "• UDP порты 1337, 6969, 8080, 2710\n"
+            "• Домены: tracker, torrent, популярные торрент-сайты\n\n"
+            "💡 <i>Для отмены используйте /unblock_torrents</i>", 
+            parse_mode="HTML"
+        )
+    else:
+        error_msg = res.stdout or "Неизвестная ошибка"
+        await update.message.reply_text(
+            f"❌ <b>Ошибка блокировки торрентов:</b>\n<pre>{html_escape(error_msg)}</pre>\n\n"
+            "💡 <i>Попробуйте /doctor для диагностики</i>", 
+            parse_mode="HTML"
+        )
+
+
+async def cmd_unblock_torrents(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
+    if not await _guard_admin(update, context, settings):
+        return
+        
+    await update.message.reply_text("🌐 <b>Разблокировка торрент-трафика...</b>", parse_mode="HTML")
+    await update.message.chat.send_action("typing")
+
+    res = run_vless(settings, ["unblock-torrents"])
+    if res.returncode == 0:
+        await update.message.reply_text(
+            "✅ <b>Торренты разблокированы!</b>\n\n"
+            "🌐 <b>Весь трафик теперь проходит через VPN</b>\n\n"
+            "💡 <i>Для повторной блокировки используйте /block_torrents</i>", 
+            parse_mode="HTML"
+        )
+    else:
+        error_msg = res.stdout or "Неизвестная ошибка"
+        await update.message.reply_text(
+            f"❌ <b>Ошибка разблокировки торрентов:</b>\n<pre>{html_escape(error_msg)}</pre>\n\n"
+            "💡 <i>Попробуйте /doctor для диагностики</i>", 
+            parse_mode="HTML"
+        )
+
+
 def sanitize_name(value: str) -> str:
     value = re.sub(r"[^A-Za-z0-9._-]+", "_", value or "")[:50]
     return value or "vpn_profile"
@@ -428,6 +482,8 @@ def build_app(settings: Settings) -> Application:
     app.add_handler(CommandHandler("del", lambda u, c: cmd_del(u, c, settings)))
     app.add_handler(CommandHandler("restart", lambda u, c: cmd_restart(u, c, settings)))
     app.add_handler(CommandHandler("fix", lambda u, c: cmd_fix(u, c, settings)))
+    app.add_handler(CommandHandler("block_torrents", lambda u, c: cmd_block_torrents(u, c, settings)))
+    app.add_handler(CommandHandler("unblock_torrents", lambda u, c: cmd_unblock_torrents(u, c, settings)))
     app.add_handler(CommandHandler("doctor", lambda u, c: cmd_doctor(u, c, settings)))
 
     return app

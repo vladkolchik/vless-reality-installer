@@ -58,6 +58,8 @@ Commands:
   del <name|uuid>     Remove client from all VLESS inbounds
   restart             Restart xray service
   fix                 Fix Xray file permissions and restart service
+  block-torrents      Block torrent traffic (BitTorrent protocol and ports)
+  unblock-torrents    Remove torrent blocking rules
   doctor              Quick diagnosis: ports, service, last logs
 EOF
 }
@@ -328,6 +330,186 @@ doctor() {
   curl -4 -fsS https://api.ipify.org || echo "(unavailable)"
 }
 
+# Block torrent traffic by updating Xray config
+block_torrents() {
+  print_info "Adding torrent blocking rules to Xray configuration..."
+  
+  if [[ ! -f "$CONFIG_PATH" ]]; then
+    print_err "Configuration file not found: $CONFIG_PATH"
+    return 1
+  fi
+  
+  # Create backup
+  local backup_path="${CONFIG_PATH}.backup.$(date +%Y%m%d_%H%M%S)"
+  cp "$CONFIG_PATH" "$backup_path"
+  print_info "Backup created: $backup_path"
+  
+  # Check if blocking already exists
+  if jq -e '.routing.rules[]? | select(.outboundTag == "block")' "$CONFIG_PATH" >/dev/null 2>&1; then
+    print_warn "Torrent blocking rules already exist"
+    return 0
+  fi
+  
+  # Create temporary file for updated config
+  local temp_config
+  temp_config=$(mktemp)
+  
+  # Add blackhole outbound and routing rules using jq
+  jq '
+  # Add blackhole outbound if not exists
+  if (.outbounds | map(select(.tag == "block")) | length) == 0 then
+    .outbounds += [{"protocol": "blackhole", "tag": "block"}]
+  else . end |
+  
+  # Add or update routing section
+  .routing = {
+    "rules": [
+      {
+        "type": "field",
+        "protocol": ["bittorrent"],
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "port": "6881-6889",
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "port": "51413",
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "domain": [
+          "tracker",
+          "torrent",
+          "thepiratebay",
+          "1337x",
+          "rarbg",
+          "kickass",
+          "rutracker",
+          "nnmclub"
+        ],
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "network": "udp",
+        "port": "1337,6969,8080,2710",
+        "outboundTag": "block"
+      }
+    ] + (if .routing.rules then .routing.rules else [] end)
+  }
+  ' "$CONFIG_PATH" > "$temp_config"
+  
+  # Validate JSON
+  if jq empty "$temp_config" 2>/dev/null; then
+    mv "$temp_config" "$CONFIG_PATH"
+    print_info "Configuration updated successfully"
+  else
+    print_err "Invalid JSON generated. Restoring backup..."
+    cp "$backup_path" "$CONFIG_PATH"
+    rm -f "$temp_config"
+    return 1
+  fi
+  
+  # Test config with xray
+  if command -v xray >/dev/null 2>&1; then
+    if ! xray -test -config "$CONFIG_PATH" 2>/dev/null; then
+      print_err "Configuration test failed. Restoring backup..."
+      cp "$backup_path" "$CONFIG_PATH"
+      return 1
+    fi
+  fi
+  
+  # Restart xray
+  print_info "Restarting Xray service..."
+  if restart_xray; then
+    print_info "✅ Torrent blocking enabled successfully!"
+    print_info "🚫 Blocked: BitTorrent protocol, ports 6881-6889, 51413, UDP 1337,6969,8080,2710"
+    print_info "🚫 Blocked domains: tracker, torrent, popular torrent sites"
+  else
+    print_err "Failed to restart Xray. Restoring backup..."
+    cp "$backup_path" "$CONFIG_PATH"
+    restart_xray
+    return 1
+  fi
+}
+
+# Remove torrent blocking rules
+unblock_torrents() {
+  print_info "Removing torrent blocking rules from Xray configuration..."
+  
+  if [[ ! -f "$CONFIG_PATH" ]]; then
+    print_err "Configuration file not found: $CONFIG_PATH"
+    return 1
+  fi
+  
+  # Create backup
+  local backup_path="${CONFIG_PATH}.backup.$(date +%Y%m%d_%H%M%S)"
+  cp "$CONFIG_PATH" "$backup_path"
+  print_info "Backup created: $backup_path"
+  
+  # Check if blocking exists
+  if ! jq -e '.routing.rules[]? | select(.outboundTag == "block")' "$CONFIG_PATH" >/dev/null 2>&1; then
+    print_warn "No torrent blocking rules found"
+    return 0
+  fi
+  
+  # Create temporary file for updated config
+  local temp_config
+  temp_config=$(mktemp)
+  
+  # Remove blocking rules and blackhole outbound using jq
+  jq '
+  # Remove blackhole outbound
+  .outbounds = (.outbounds | map(select(.tag != "block"))) |
+  
+  # Remove routing rules with "block" outboundTag
+  if .routing.rules then
+    .routing.rules = (.routing.rules | map(select(.outboundTag != "block")))
+  else . end |
+  
+  # Remove routing section if no rules left
+  if .routing.rules and (.routing.rules | length) == 0 then
+    del(.routing)
+  else . end
+  ' "$CONFIG_PATH" > "$temp_config"
+  
+  # Validate JSON
+  if jq empty "$temp_config" 2>/dev/null; then
+    mv "$temp_config" "$CONFIG_PATH"
+    print_info "Configuration updated successfully"
+  else
+    print_err "Invalid JSON generated. Restoring backup..."
+    cp "$backup_path" "$CONFIG_PATH"
+    rm -f "$temp_config"
+    return 1
+  fi
+  
+  # Test config with xray
+  if command -v xray >/dev/null 2>&1; then
+    if ! xray -test -config "$CONFIG_PATH" 2>/dev/null; then
+      print_err "Configuration test failed. Restoring backup..."
+      cp "$backup_path" "$CONFIG_PATH"
+      return 1
+    fi
+  fi
+  
+  # Restart xray
+  print_info "Restarting Xray service..."
+  if restart_xray; then
+    print_info "✅ Torrent blocking removed successfully!"
+    print_info "🌐 All traffic is now allowed through the VPN"
+  else
+    print_err "Failed to restart Xray. Restoring backup..."
+    cp "$backup_path" "$CONFIG_PATH"
+    restart_xray
+    return 1
+  fi
+}
+
 main() {
   local cmd="${1:-}"; shift || true
   case "$cmd" in
@@ -357,6 +539,14 @@ main() {
       require_root
       fix_xray_permissions
       restart_xray
+      ;;
+    block-torrents)
+      require_root
+      block_torrents
+      ;;
+    unblock-torrents)
+      require_root
+      unblock_torrents
       ;;
     doctor)
       doctor

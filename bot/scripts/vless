@@ -354,21 +354,24 @@ block_torrents() {
   local temp_config
   temp_config=$(mktemp)
   
-  # Add blackhole outbound and routing rules using jq
+  # Use a simple approach: create the complete configuration in steps
   # Step 1: Add blackhole outbound if not exists
   jq 'if (.outbounds | map(select(.tag == "block")) | length) == 0 then .outbounds += [{"protocol": "blackhole", "tag": "block"}] else . end' "$CONFIG_PATH" > "${temp_config}.step1"
   
-  # Step 2: Add routing rules
+  # Step 2: Initialize routing section if it doesn't exist
+  jq 'if .routing then . else .routing = {} end' "${temp_config}.step1" > "${temp_config}.step2"
+  
+  # Step 3: Add torrent blocking rules (simple assignment without concatenation)
   jq '.routing.rules = [
     {"type": "field", "protocol": ["bittorrent"], "outboundTag": "block"},
     {"type": "field", "port": "6881-6889", "outboundTag": "block"},
     {"type": "field", "port": "51413", "outboundTag": "block"},
     {"type": "field", "domain": ["tracker", "torrent", "thepiratebay", "1337x", "rarbg", "kickass", "rutracker", "nnmclub"], "outboundTag": "block"},
     {"type": "field", "network": "udp", "port": "1337,6969,8080,2710", "outboundTag": "block"}
-  ] + (if .routing.rules then .routing.rules else [] end)' "${temp_config}.step1" > "$temp_config"
+  ]' "${temp_config}.step2" > "$temp_config"
   
-  # Clean up intermediate file
-  rm -f "${temp_config}.step1"
+  # Clean up intermediate files
+  rm -f "${temp_config}.step1" "${temp_config}.step2"
   
   # Validate JSON
   if jq empty "$temp_config" 2>/dev/null; then

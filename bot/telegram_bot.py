@@ -177,8 +177,8 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE, settings:
     await update.message.chat.send_action("typing")
     await update.message.reply_text(f"📋 <b>Список клиентов ({len(entries)}):</b>", parse_mode="HTML")
 
-    # Limit to first 10 to avoid flooding; user can use /show for details
-    limit = 10
+    # Limit to first 5 to avoid flooding; user can use /show for details
+    limit = 5
     total = len(entries)
     for idx, (uuid, name) in enumerate(entries[:limit], start=1):
         # Use vless show to generate URLs and QR
@@ -191,29 +191,39 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE, settings:
             elif s.startswith("80:"):
                 url80 = s.split(':', 1)[1].strip()
 
-        safe = sanitize_name(name or uuid)
-        header = f"👤 <b>{idx}. {html_escape(name)}</b>\nUUID: <code>{html_escape(uuid)}</code>"
-        body = []
+        # Format like /show command but more compact
+        title = f"👤 <b>Клиент {idx}: {html_escape(name)}</b>"
+        uuid_line = f"UUID: <code>{html_escape(uuid)}</code>"
+        body = ["📱 <b>Ссылки для подключения:</b>"]
         if url443:
             body.append(f"🔒 <b>443:</b> <code>{html_escape(url443)}</code>")
         if url80:
             body.append(f"🌐 <b>80:</b> <code>{html_escape(url80)}</code>")
-        text = header + ("\n" + "\n".join(body) if body else "")
+        body.append("\n📋 <i>Нажмите на ссылку для копирования</i>")
+        text = "\n".join([title, uuid_line, ""] + body)
+        
         try:
             await update.message.reply_text(text, parse_mode="HTML")
         except Exception:
             # Fallback without formatting
-            await update.message.reply_text(f"👤 {name}\nUUID: {uuid}\n443: {url443 or ''}\n80: {url80 or ''}")
+            await update.message.reply_text(f"👤 Клиент {idx}: {name}\nUUID: {uuid}\n443: {url443 or ''}\n80: {url80 or ''}")
 
         # Send QR images if available
+        safe = sanitize_name(name or uuid)
+        qr_sent = 0
         for suffix in ("443", "80"):
             path = os.path.join(settings.output_dir, f"{safe}_{suffix}.png")
             if os.path.exists(path):
                 try:
                     with open(path, "rb") as f:
-                        await update.message.reply_photo(f, caption=os.path.basename(path))
+                        caption = f"📱 QR-код для порта {suffix}\n🔗 {html_escape(name)}"
+                        await update.message.reply_photo(f, caption=caption, parse_mode="HTML")
+                        qr_sent += 1
                 except Exception:
                     pass
+        
+        if qr_sent == 0:
+            await update.message.reply_text(f"⚠️ <i>QR-коды для {html_escape(name)} не найдены</i>", parse_mode="HTML")
 
     if total > limit:
         await update.message.reply_text(f"📄 <i>Показано первые {limit} из {total} клиентов</i>\n\n🔍 <i>Для конкретного клиента:</i> <code>/show &lt;name|uuid&gt;</code>", parse_mode="HTML")

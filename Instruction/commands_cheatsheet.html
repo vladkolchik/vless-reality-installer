@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Чит‑лист основных команд (VPN / сервер)</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⌨️</text></svg>">
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #2c3e50; background: #f5f7fb; }
+        .container { max-width: 980px; margin: 0 auto; padding: 24px; }
+        .header { background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%); color: #fff; padding: 32px 24px; border-radius: 16px; box-shadow: 0 12px 32px rgba(0,0,0,.12); }
+        .header h1 { margin: 0 0 8px; font-weight: 600; }
+        .header p { margin: 0; opacity: .9; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 24px; }
+        .section { background: #fff; border-radius: 14px; padding: 18px; box-shadow: 0 6px 18px rgba(0,0,0,.06); border: 1px solid #eef1f6; }
+        .section h2 { margin: 0 0 10px; font-size: 18px; color: #1f2d3d; }
+        .cmd { position: relative; background: #0f172a; color: #e5e7eb; padding: 14px 44px 14px 14px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; line-height: 1.45; margin: 10px 0; overflow-x: auto; border-left: 4px solid #22d3ee; }
+        .copy { position: absolute; right: 8px; top: 8px; background: #22d3ee; color: #0f172a; border: 0; padding: 6px 10px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 12px; }
+        .copy:hover { filter: brightness(.95); }
+        /* Показывать кнопку копирования при наведении/фокусе */
+        .cmd .copy { opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+        .cmd:hover .copy, .cmd:focus-within .copy { opacity: 1; pointer-events: auto; }
+        .note { font-size: 13px; color: #475569; margin: 6px 0 0; }
+        .footer { text-align: center; color: #64748b; font-size: 13px; margin: 28px 0 8px; }
+        .tag { display: inline-block; background: #eef2ff; color: #3730a3; padding: 2px 8px; border-radius: 999px; font-size: 12px; margin-left: 6px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Чит‑лист основных команд</h1>
+            <p>Xray (VLESS+Reality), сервисы, сеть, фаервол, пользователи и удаление</p>
+        </div>
+
+        <div class="grid">
+            <div class="section">
+                <h2>Система <span class="tag">Linux</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo reboot</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl reboot</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo shutdown -r now</div>
+                <p class="note">Перезапуск/перезагрузка системы.</p>
+            </div>
+
+            <div class="section">
+                <h2>Xray (VLESS+Reality)</h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl restart xray</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl status xray | cat</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo journalctl -u xray -f</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo nano /usr/local/etc/xray/config.json</div>
+                <p class="note">Управление сервисом и правка конфигурации.</p>
+            </div>
+
+            <div class="section">
+                <h2>vless CLI</h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless add MyPhone</div>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless list</div>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless show MyPhone</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless del MyPhone</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless restart</div>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless doctor</div>
+                <ul class="list">
+                    <li><code>vless add &lt;name&gt;</code>: добавляет клиента (имя сохраняется в поле <code>email</code>). Выводит UUID. После добавления перезапустите Xray: <code>sudo vless restart</code>.</li>
+                    <li><code>vless list</code>: список клиентов (UUID | NAME) агрегировано по всем VLESS-входам.</li>
+                    <li><code>vless show &lt;name|uuid&gt;</code>: печатает 2 ссылки (443/80) и сохраняет QR-коды в <code>/root/vless-configs</code> (нужен <code>qrencode</code>).</li>
+                    <li><code>vless del &lt;name|uuid&gt;</code>: удаляет клиента из всех VLESS-входов. Затем: <code>sudo vless restart</code>.</li>
+                    <li><code>vless restart</code>: перезапуск службы Xray.</li>
+                    <li><code>vless doctor</code>: краткая диагностика — статус сервиса, последние логи, прослушиваемые порты, внешний IP.</li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2>Телеграм‑бот (установка/обновление)</h2>
+                <div class="cmd"><button class="copy">Копировать</button>bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh)</div>
+                <div class="cmd"><button class="copy">Копировать</button>bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh) update</div>
+                <div class="cmd"><button class="copy">Копировать</button>systemctl status vless-bot | cat</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl restart vless-bot</div>
+                <div class="cmd"><button class="copy">Копировать</button>journalctl -u vless-bot -n 50 | cat</div>
+                <p class="note">Установка, обновление и управление сервисом бота.</p>
+            </div>
+
+            <div class="section">
+                <h2>Команды Телеграм‑бота</h2>
+                <div class="cmd"><button class="copy">Копировать</button>/start</div>
+                <div class="cmd"><button class="copy">Копировать</button>/add iPhone_John</div>
+                <div class="cmd"><button class="copy">Копировать</button>/list</div>
+                <div class="cmd"><button class="copy">Копировать</button>/show iPhone_John</div>
+                <div class="cmd"><button class="copy">Копировать</button>/del iPhone_John</div>
+                <div class="cmd"><button class="copy">Копировать</button>/restart</div>
+                <div class="cmd"><button class="copy">Копировать</button>/doctor</div>
+                <ul class="list">
+                    <li><code>/start</code> или <code>/help</code> — показать меню команд с описанием.</li>
+                    <li><code>/add &lt;name&gt;</code> — создать клиента, получить ссылки 443/80 и QR‑коды. Автоматически применяется без перезапуска.</li>
+                    <li><code>/list</code> — показать всех клиентов с именами, UUID, копируемыми ссылками и QR для каждого.</li>
+                    <li><code>/show &lt;name|uuid&gt;</code> — показать конфигурацию конкретного клиента с ссылками и QR.</li>
+                    <li><code>/del &lt;name|uuid&gt;</code> — удалить клиента с подтверждением. После удаления рекомендуется <code>/restart</code>.</li>
+                    <li><code>/restart</code> — перезапустить Xray для применения изменений конфигурации.</li>
+                    <li><code>/doctor</code> — диагностика: статус сервиса, логи, порты, внешний IP.</li>
+                </ul>
+                <p class="note">🔒 Бот отвечает только администраторам (ID из <code>TELEGRAM_ADMINS</code> в <code>/etc/vless-bot.env</code>). Неавторизованные пользователи игнорируются.</p>
+            </div>
+
+            <div class="section">
+                <h2>Конфигурации клиента</h2>
+                <div class="cmd"><button class="copy">Копировать</button>ls -1 /root/vless-configs</div>
+                <div class="cmd"><button class="copy">Копировать</button>cat /root/vless-configs/config_1_443.txt</div>
+                <div class="cmd"><button class="copy">Копировать</button>scp root@SERVER_IP:/root/vless-configs/config_1_443.png .</div>
+                <p class="note">Где лежат URL и QR‑коды для подключения.</p>
+            </div>
+
+            <div class="section">
+                <h2>Фаервол (UFW)</h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo ufw status verbose | cat</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo ufw allow 443/tcp && sudo ufw allow 80/tcp</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo ufw reload</div>
+                <p class="note">Открыть порты 443 и 80, проверить статус.</p>
+            </div>
+
+            <div class="section">
+                <h2>Fail2ban</h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl status fail2ban | cat</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo journalctl -u fail2ban -f</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo fail2ban-client status</div>
+                <p class="note">Статус и логи Fail2ban.</p>
+            </div>
+
+            <div class="section">
+                <h2>Сеть и диагностика</h2>
+                <div class="cmd"><button class="copy">Копировать</button>ss -ltnp | grep ':443' || true</div>
+                <div class="cmd"><button class="copy">Копировать</button>ss -ltnp -6 | grep ':443' || true</div>
+                <div class="cmd"><button class="copy">Копировать</button>curl -s ifconfig.me</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo tcpdump -nni any 'tcp port 443' -c 30</div>
+                <div class="cmd"><button class="copy">Копировать</button>nc -vz SERVER_IP 443</div>
+                <p class="note">Проверка портов, внешнего IP и входящих соединений.</p>
+            </div>
+
+            <div class="section">
+                <h2>Пользователи и sudo</h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/grant-sudo NEWUSER</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo passwd NEWUSER</div>
+                <div class="cmd"><button class="copy">Копировать</button>id NEWUSER</div>
+                <p class="note">Создание пользователя с sudo и установка пароля.</p>
+            </div>
+
+            <div class="section">
+                <h2>Удаление (деинсталляция)</h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo vless-uninstall --yes</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo vless-uninstall --yes --reset-firewall</div>
+                <p class="note">Удаляет Xray, конфиги, Fail2ban, вспомогательные скрипты. Опция reset-firewall очищает правила фаервола.</p>
+            </div>
+        </div>
+
+        <p class="footer">Поддерживайте систему в актуальном состоянии, делайте бэкапы конфигов перед изменениями.</p>
+    </div>
+
+    <script>
+        function getCommandText(cmdEl){
+            var clone = cmdEl.cloneNode(true);
+            var btn = clone.querySelector('.copy');
+            if (btn) btn.remove();
+            return clone.textContent.trim();
+        }
+        function copyText(text, btn){
+            var parent = btn.closest('.cmd');
+            function restore(){
+                btn.textContent = 'Копировать';
+                btn.style.opacity = '';
+                btn.style.pointerEvents = '';
+                if (parent) {
+                    parent.removeEventListener('mouseleave', restore);
+                    parent.removeEventListener('blur', restore, true);
+                }
+            }
+            function onSuccess(){
+                btn.textContent = 'Скопировано';
+                setTimeout(function(){
+                    // Спрятать кнопку даже при наведении до следующего наведения
+                    btn.style.opacity = '0';
+                    btn.style.pointerEvents = 'none';
+                    if (parent) {
+                        parent.addEventListener('mouseleave', restore);
+                        parent.addEventListener('blur', restore, true);
+                    }
+                }, 1200);
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(onSuccess).catch(function(){
+                    fallbackCopy(text, btn, onSuccess);
+                });
+            } else {
+                fallbackCopy(text, btn, onSuccess);
+            }
+        }
+        function fallbackCopy(text, btn, onSuccess){
+            var ta = document.createElement('textarea');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try { document.execCommand('copy'); onSuccess(); }
+            catch(e) { btn.textContent = 'Ошибка'; }
+            finally {
+                document.body.removeChild(ta);
+            }
+        }
+        function wireCopyButtons() {
+            document.querySelectorAll('.cmd').forEach(function(el){
+                var btn = el.querySelector('.copy');
+                btn.addEventListener('click', function(){
+                    var text = getCommandText(el);
+                    copyText(text, btn);
+                });
+            });
+        }
+        document.addEventListener('DOMContentLoaded', wireCopyButtons);
+    </script>
+</body>
+</html>
+
+

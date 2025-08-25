@@ -355,53 +355,20 @@ block_torrents() {
   temp_config=$(mktemp)
   
   # Add blackhole outbound and routing rules using jq
-  jq '
-  # Add blackhole outbound if not exists
-  if (.outbounds | map(select(.tag == "block")) | length) == 0 then
-    .outbounds += [{"protocol": "blackhole", "tag": "block"}]
-  else . end |
+  # Step 1: Add blackhole outbound if not exists
+  jq 'if (.outbounds | map(select(.tag == "block")) | length) == 0 then .outbounds += [{"protocol": "blackhole", "tag": "block"}] else . end' "$CONFIG_PATH" > "${temp_config}.step1"
   
-  # Add or update routing section
-  .routing = {
-    "rules": [
-      {
-        "type": "field",
-        "protocol": ["bittorrent"],
-        "outboundTag": "block"
-      },
-      {
-        "type": "field",
-        "port": "6881-6889",
-        "outboundTag": "block"
-      },
-      {
-        "type": "field",
-        "port": "51413",
-        "outboundTag": "block"
-      },
-      {
-        "type": "field",
-        "domain": [
-          "tracker",
-          "torrent",
-          "thepiratebay",
-          "1337x",
-          "rarbg",
-          "kickass",
-          "rutracker",
-          "nnmclub"
-        ],
-        "outboundTag": "block"
-      },
-      {
-        "type": "field",
-        "network": "udp",
-        "port": "1337,6969,8080,2710",
-        "outboundTag": "block"
-      }
-    ] + (if .routing.rules then .routing.rules else [] end)
-  }
-  ' "$CONFIG_PATH" > "$temp_config"
+  # Step 2: Add routing rules
+  jq '.routing.rules = [
+    {"type": "field", "protocol": ["bittorrent"], "outboundTag": "block"},
+    {"type": "field", "port": "6881-6889", "outboundTag": "block"},
+    {"type": "field", "port": "51413", "outboundTag": "block"},
+    {"type": "field", "domain": ["tracker", "torrent", "thepiratebay", "1337x", "rarbg", "kickass", "rutracker", "nnmclub"], "outboundTag": "block"},
+    {"type": "field", "network": "udp", "port": "1337,6969,8080,2710", "outboundTag": "block"}
+  ] + (if .routing.rules then .routing.rules else [] end)' "${temp_config}.step1" > "$temp_config"
+  
+  # Clean up intermediate file
+  rm -f "${temp_config}.step1"
   
   # Validate JSON
   if jq empty "$temp_config" 2>/dev/null; then
@@ -462,20 +429,17 @@ unblock_torrents() {
   temp_config=$(mktemp)
   
   # Remove blocking rules and blackhole outbound using jq
-  jq '
-  # Remove blackhole outbound
-  .outbounds = (.outbounds | map(select(.tag != "block"))) |
+  # Step 1: Remove blackhole outbound
+  jq '.outbounds = (.outbounds | map(select(.tag != "block")))' "$CONFIG_PATH" > "${temp_config}.step1"
   
-  # Remove routing rules with "block" outboundTag
-  if .routing.rules then
-    .routing.rules = (.routing.rules | map(select(.outboundTag != "block")))
-  else . end |
+  # Step 2: Remove routing rules with "block" outboundTag
+  jq 'if .routing.rules then .routing.rules = (.routing.rules | map(select(.outboundTag != "block"))) else . end' "${temp_config}.step1" > "${temp_config}.step2"
   
-  # Remove routing section if no rules left
-  if .routing.rules and (.routing.rules | length) == 0 then
-    del(.routing)
-  else . end
-  ' "$CONFIG_PATH" > "$temp_config"
+  # Step 3: Remove routing section if no rules left
+  jq 'if .routing.rules and (.routing.rules | length) == 0 then del(.routing) else . end' "${temp_config}.step2" > "$temp_config"
+  
+  # Clean up intermediate files
+  rm -f "${temp_config}.step1" "${temp_config}.step2"
   
   # Validate JSON
   if jq empty "$temp_config" 2>/dev/null; then

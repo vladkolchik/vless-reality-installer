@@ -18,10 +18,11 @@
 #### Через веб-интерфейс:
 1. Нажмите **"Add file" → "Upload files"**
 2. Перетащите файлы:
-   - `install_vless_reality.sh`
-   - `README.md`  
-   - `Instruction/server_security_guide.html`
-   - `Instruction/vpn_ru_geosite_exclusions.html`
+   - `install_vless_reality.sh` (основной инсталлятор VPN)
+   - `install_vless_bot.sh` (инсталлятор Telegram-бота)
+   - `README.md` (главная документация)
+   - Папку `bot/` со всеми файлами бота
+   - Папку `Instruction/` с HTML-гидами и документацией
 3. Напишите commit message: "Initial release"
 4. Нажмите **"Commit changes"**
 
@@ -58,9 +59,16 @@ https://raw.githubusercontent.com/yourusername/reponame/main/install_vless_reali
 
 ### 5. Проверьте работу
 
-Протестируйте команду установки:
+Протестируйте команды установки:
+
+**VPN:**
 ```bash
-bash <(curl -s [https://raw.githubusercontent.com/yourusername/reponame/main/install_vless_reality.sh](https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh))
+bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
+```
+
+**Telegram-бот:**
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh)
 ```
 
 ## 🔧 Настройка автообновлений
@@ -88,17 +96,45 @@ jobs:
     - name: Test script syntax
       run: |
         bash -n install_vless_reality.sh
+        bash -n install_vless_bot.sh
         
     - name: Check script permissions
       run: |
         test -x install_vless_reality.sh || chmod +x install_vless_reality.sh
+        test -x install_vless_bot.sh || chmod +x install_vless_bot.sh
+        
+    - name: Test bot Python syntax
+      run: |
+        python3 -m py_compile bot/telegram_bot.py
 ```
 
 ### Создание релизов
 
 1. Перейдите в **"Releases"** → **"Create a new release"**
 2. Создайте тег версии: `v1.0.0`
-3. Заполните описание релиза
+3. Заполните описание релиза:
+
+```markdown
+## ⚡ Быстрая установка
+
+**VPN сервер:**
+```bash
+bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
+```
+
+**Telegram-бот (опционально):**
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh)
+```
+
+## 🆕 Новое в этой версии
+- ✅ Автоматическая установка CLI `vless` для управления
+- 🤖 Telegram-бот с admin-only доступом
+- 🔧 Команда `/fix` для решения проблем с правами доступа
+- 📱 Улучшенный UX: QR-коды, копируемые ссылки
+- 🔄 Автообновление бота одной командой
+```
+
 4. Прикрепите файлы при необходимости
 5. Опубликуйте релиз
 

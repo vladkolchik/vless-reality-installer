@@ -5,14 +5,14 @@
 # Bot folder: https://github.com/vladkolchik/vless-reality-installer/tree/main/bot
 # Usage examples:
 #   # Install (interactive)
-#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh)
 #   # Install (non-interactive)
-#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh) --non-interactive
+#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh) --non-interactive
 #   # Update to latest bot/CLI from repo
-#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh) update
+#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh) update
 #   # Override base (optional)
-#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main/install_vless_bot.sh) \
-#        --raw-base https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main
+#   bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh) \
+#        --raw-base https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main
 # Options:
 #   --raw-base URL        Base raw URL to fetch files (required if not set via RAW_BASE env)
 #   --non-interactive     Do not prompt; create empty /etc/vless-bot.env if missing
@@ -49,7 +49,7 @@ while (( "$#" )); do
 done
 
 if [[ -z "$RAW_BASE" ]]; then
-  RAW_BASE="https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/main"
+  RAW_BASE="https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main"
   info "RAW_BASE not provided; using default: $RAW_BASE"
 fi
 

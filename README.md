@@ -1,6 +1,6 @@
 # 🔒 VLESS+Reality VPN Auto-Install
 
-Автоматическая установка и настройка VLESS+Reality VPN сервера одной командой.
+Автоматическая установка и настройка VLESS+Reality VPN сервера одной командой + опциональный Telegram-бот для удобного управления.
 
 ## 🚀 Быстрая установка
 
@@ -13,7 +13,7 @@ bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-insta
 ### Или скачайте и проверьте код:
 
 ```bash
-wget https://raw.githubusercontent.com/yourusername/VPN/main/install_vless_reality.sh
+wget https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh
 nano install_vless_reality.sh  # Просмотр кода
 chmod +x install_vless_reality.sh
 ./install_vless_reality.sh
@@ -28,6 +28,8 @@ chmod +x install_vless_reality.sh
 - 🛡️ **Настраивает firewall** (UFW/Firewalld)
 - 📱 **Генерирует QR коды** для всех клиентов
 - ✅ **Проверяет работоспособность** сервиса
+- 🔧 **Устанавливает CLI `vless`** для управления клиентами
+- 👥 **Создаёт sudo-пользователя** для безопасности
 
 ## 🖥️ Поддерживаемые системы
 
@@ -97,7 +99,7 @@ chmod +x install_vless_reality.sh
 2. **Подключитесь по SSH** под root
 3. **Выполните команду установки:**
    ```bash
-   bash <(curl -s https://raw.githubusercontent.com/yourusername/VPN/main/install_vless_reality.sh)
+   bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
    ```
 4. **Скачайте QR код:**
    ```bash
@@ -119,7 +121,37 @@ ss -tulpn | grep :443
 
 # Показать конфигурации
 cat /root/vless-configs/README.txt
+
+# CLI для управления (установлен автоматически)
+vless list                    # список клиентов
+vless doctor                  # диагностика
+sudo vless add MyPhone        # добавить клиента
+sudo vless restart            # перезапуск
+sudo vless fix                # исправить права доступа
 ```
+
+## 🤖 Telegram-бот (опционально)
+
+Для удобного управления VPN прямо из Telegram:
+
+```bash
+# Установка бота (интерактивно)
+bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh)
+
+# Обновление бота
+bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh) update
+```
+
+**Возможности бота:**
+- 📱 Создание клиентов `/add` с автоматическими QR-кодами
+- 📋 Список всех клиентов `/list` с копируемыми ссылками  
+- 🔍 Просмотр конфигурации `/show` конкретного клиента
+- ❌ Удаление клиентов `/del` с подтверждением
+- 🔄 Перезапуск сервиса `/restart`
+- 🔧 Исправление проблем `/fix` (права доступа)
+- 🩺 Диагностика сервера `/doctor`
+
+**Безопасность:** Доступ только для админов (Telegram ID), остальные игнорируются.
 
 ## 🌍 Что такое VLESS+Reality?
 

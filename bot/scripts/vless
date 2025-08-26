@@ -138,9 +138,9 @@ add_client() {
   require_dep jq
   local uuid
   if command -v uuidgen >/dev/null 2>&1; then
-    uuid=$(uuidgen)
+    uuid=$(uuidgen | xargs)
   else
-    uuid=$(cat /proc/sys/kernel/random/uuid)
+    uuid=$(cat /proc/sys/kernel/random/uuid | xargs)
   fi
   local email="$name"
   # Update both VLESS inbounds

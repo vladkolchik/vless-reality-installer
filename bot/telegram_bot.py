@@ -164,8 +164,11 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE, settings:
     entries: List[Tuple[str, str]] = []  # (uuid, name)
     for ln in lines:
         ln = ln.strip()
-        # Match UUID | NAME
-        m = re.match(r"^([0-9a-fA-F-]{20,})\s*\|\s*(.*)$", ln)
+        # Skip header and separator lines
+        if ln.startswith("UUID") or ln.startswith("-"):
+            continue
+        # Match UUID | NAME (UUID must contain alphanumeric chars, not just dashes)
+        m = re.match(r"^([0-9a-fA-F-]{36})\s*\|\s*(.*)$", ln)
         if m:
             uuid = m.group(1).strip()
             name = (m.group(2) or "").strip()

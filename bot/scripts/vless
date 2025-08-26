@@ -146,18 +146,6 @@ add_client() {
   # Update both VLESS inbounds
   local tmp
   tmp=$(mktemp)
-  # Check if client with this name already exists
-  local client_exists
-  client_exists=$(jq -r --arg email "$email" '[.inbounds[] | select(.protocol=="vless") | .settings.clients[]?] | any(.email == $email)' "$CONFIG_PATH" 2>/dev/null || echo "false")
-  if [[ "$client_exists" == "true" ]]; then
-    print_err "Client with name '$email' already exists"
-    print_info "Try a different name or delete the existing client first:"
-    print_info "  vless list                    # see all clients"
-    print_info "  sudo vless del '$email'       # delete existing"
-    print_info "  sudo vless add '${email}_new' # use different name"
-    exit 1
-  fi
-
   jq --arg uuid "$uuid" --arg email "$email" '
     (.inbounds[] | select(.protocol=="vless") | .settings.clients) |= (
       if any(.id == $uuid) then . else . + [{id:$uuid,flow:"xtls-rprx-vision",email:$email}] end
@@ -357,7 +345,7 @@ block_torrents() {
   print_info "Backup created: $backup_path"
   
   # Check if blocking already exists
-  if jq '.routing.rules[]? | select(.outboundTag == "block")' "$CONFIG_PATH" >/dev/null 2>&1; then
+  if jq -e '.routing.rules[]? | select(.outboundTag == "block")' "$CONFIG_PATH" >/dev/null 2>&1; then
     print_warn "Torrent blocking rules already exist"
     return 0
   fi
@@ -434,7 +422,7 @@ unblock_torrents() {
   print_info "Backup created: $backup_path"
   
   # Check if blocking exists
-  if ! jq '.routing.rules[]? | select(.outboundTag == "block")' "$CONFIG_PATH" >/dev/null 2>&1; then
+  if ! jq -e '.routing.rules[]? | select(.outboundTag == "block")' "$CONFIG_PATH" >/dev/null 2>&1; then
     print_warn "No torrent blocking rules found"
     return 0
   fi

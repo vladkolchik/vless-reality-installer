@@ -58,6 +58,7 @@ Commands:
   del <name|uuid>     Remove client from all VLESS inbounds
   restart             Restart xray service
   fix                 Fix Xray file permissions and restart service
+  fix-names           Assign names to clients without one
   block-torrents      Block torrent traffic (BitTorrent protocol and ports)
   unblock-torrents    Remove torrent blocking rules
   doctor              Quick diagnosis: ports, service, last logs

@@ -153,6 +153,12 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: 
     
     if qr_sent == 0:
         await update.message.reply_text("⚠️ <i>QR-коды не созданы (проверьте установку qrencode)</i>", parse_mode="HTML")
+    
+    # Add restart reminder after client creation
+    await update.message.reply_text(
+        "🔄 <b>Не забудьте перезапустить сервис:</b> /restart",
+        parse_mode="HTML"
+    )
 
 
 async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:

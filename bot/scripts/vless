@@ -58,7 +58,6 @@ Commands:
   del <name|uuid>     Remove client from all VLESS inbounds
   restart             Restart xray service
   fix                 Fix Xray file permissions and restart service
-  fix-names           Assign names to clients without one
   block-torrents      Block torrent traffic (BitTorrent protocol and ports)
   unblock-torrents    Remove torrent blocking rules
   doctor              Quick diagnosis: ports, service, last logs
@@ -139,9 +138,9 @@ add_client() {
   require_dep jq
   local uuid
   if command -v uuidgen >/dev/null 2>&1; then
-    uuid=$(uuidgen | xargs)
+    uuid=$(uuidgen)
   else
-    uuid=$(cat /proc/sys/kernel/random/uuid | xargs)
+    uuid=$(cat /proc/sys/kernel/random/uuid)
   fi
   local email="$name"
   # Update both VLESS inbounds

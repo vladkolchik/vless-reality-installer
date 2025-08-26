@@ -98,7 +98,20 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: 
         
     add_res = run_vless(settings, ["add", name])
     if add_res.returncode != 0:
-        await update.message.reply_text(f"❌ <b>Ошибка создания клиента:</b>\n<code>{html_escape(add_res.stdout or 'Unknown error')}</code>", parse_mode="HTML")
+        error_output = add_res.stdout or 'Unknown error'
+        
+        # Check if it's a duplicate name error
+        if "already exists" in error_output:
+            await update.message.reply_text(
+                f"❌ <b>Клиент с именем '{html_escape(name)}' уже существует</b>\n\n"
+                f"💡 <b>Попробуйте:</b>\n"
+                f"• Другое имя: <code>/add {html_escape(name)}_new</code>\n"
+                f"• Удалить старый: <code>/del {html_escape(name)}</code>\n"
+                f"• Посмотреть список: <code>/list</code>",
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(f"❌ <b>Ошибка создания клиента:</b>\n<code>{html_escape(error_output)}</code>", parse_mode="HTML")
         return
 
     # Extract UUID from add output

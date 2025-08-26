@@ -7,8 +7,8 @@ from typing import List, Optional, Tuple
 from html import escape as html_escape
 
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 
 @dataclass
@@ -68,7 +68,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE, settings
         "• /add &lt;name&gt; — создать клиента\n"
         "• /list — список всех клиентов\n"
         "• /show &lt;name|uuid&gt; — показать конфигурацию\n"
-        "• /del &lt;name|uuid&gt; — удалить клиента\n"
+        "• /del &lt;name|uuid&gt; — удалить клиента (с подтверждением)\n"
         "• /restart — перезапустить Xray\n"
         "• /fix — исправить права и перезапустить\n"
         "• /block_torrents — заблокировать торренты\n"
@@ -307,33 +307,23 @@ async def cmd_del(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: 
         
     key = " ".join(context.args).strip()
     
-    # Confirmation prompt
+    # Create inline keyboard for confirmation
+    keyboard = [
+        [
+            InlineKeyboardButton("🗑️ Удалить", callback_data=f"delete_confirm:{key}"),
+            InlineKeyboardButton("❌ Отмена", callback_data="delete_cancel")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Confirmation prompt with buttons
     await update.message.reply_text(
         f"⚠️ <b>Подтвердите удаление</b>\n\n"
         f"👤 Клиент: <code>{html_escape(key)}</code>\n\n"
-        f"💬 <i>Ответьте 'yes' для подтверждения или любое другое сообщение для отмены</i>",
-        parse_mode="HTML"
+        f"⚡ <i>Нажмите кнопку для подтверждения или отмены</i>",
+        parse_mode="HTML",
+        reply_markup=reply_markup
     )
-    
-    # For simplicity, we'll proceed with deletion immediately
-    # In a full implementation, you'd use ConversationHandler
-    await update.message.chat.send_action("typing")
-    res = run_vless(settings, ["del", key])
-    
-    if res.returncode == 0:
-        await update.message.reply_text(
-            f"✅ <b>Клиент удалён</b>\n\n"
-            f"👤 {html_escape(key)}\n\n"
-            f"🔄 <i>Не забудьте перезапустить сервис:</i> /restart",
-            parse_mode="HTML"
-        )
-    else:
-        await update.message.reply_text(
-            f"❌ <b>Ошибка удаления:</b>\n"
-            f"<code>{html_escape(res.stdout or 'Клиент не найден')}</code>\n\n"
-            f"📋 <i>Посмотрите список:</i> /list",
-            parse_mode="HTML"
-        )
 
 
 async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
@@ -468,6 +458,58 @@ async def cmd_unblock_torrents(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
 
+async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
+    query = update.callback_query
+    if not query or not query.data:
+        return
+        
+    # Check admin permissions
+    uid = update.effective_user.id if update.effective_user else None
+    if not is_admin(uid, settings):
+        await query.answer("❌ Доступ запрещен", show_alert=True)
+        return
+    
+    await query.answer()  # Acknowledge the callback
+    
+    if query.data == "delete_cancel":
+        # User cancelled deletion
+        await query.edit_message_text(
+            "❌ <b>Удаление отменено</b>\n\n"
+            "👤 Клиент не был удален",
+            parse_mode="HTML"
+        )
+        return
+    
+    if query.data.startswith("delete_confirm:"):
+        # User confirmed deletion
+        key = query.data.split(":", 1)[1]
+        
+        # Show processing message
+        await query.edit_message_text(
+            f"🔄 <b>Удаление клиента...</b>\n\n"
+            f"👤 {html_escape(key)}",
+            parse_mode="HTML"
+        )
+        
+        # Perform actual deletion
+        res = run_vless(settings, ["del", key])
+        
+        if res.returncode == 0:
+            await query.edit_message_text(
+                f"✅ <b>Клиент удалён</b>\n\n"
+                f"👤 {html_escape(key)}\n\n"
+                f"🔄 <i>Не забудьте перезапустить сервис:</i> /restart",
+                parse_mode="HTML"
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ <b>Ошибка удаления:</b>\n"
+                f"<code>{html_escape(res.stdout or 'Клиент не найден')}</code>\n\n"
+                f"📋 <i>Посмотрите список:</i> /list",
+                parse_mode="HTML"
+            )
+
+
 def sanitize_name(value: str) -> str:
     value = re.sub(r"[^A-Za-z0-9._-]+", "_", value or "")[:50]
     return value or "vpn_profile"
@@ -488,6 +530,9 @@ def build_app(settings: Settings) -> Application:
     app.add_handler(CommandHandler("block_torrents", lambda u, c: cmd_block_torrents(u, c, settings)))
     app.add_handler(CommandHandler("unblock_torrents", lambda u, c: cmd_unblock_torrents(u, c, settings)))
     app.add_handler(CommandHandler("doctor", lambda u, c: cmd_doctor(u, c, settings)))
+    
+    # Add callback query handler for delete confirmation
+    app.add_handler(CallbackQueryHandler(lambda u, c: handle_delete_callback(u, c, settings)))
 
     return app
 

@@ -73,8 +73,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE, settings
         "• /fix — исправить права и перезапустить\n"
         "• /block_torrents — заблокировать торренты\n"
         "• /unblock_torrents — разблокировать торренты\n"
-        "• /adblock_on — включить блокировку рекламы\n"
-        "• /adblock_off — отключить блокировку рекламы\n"
         "• /doctor — диагностика сервера\n\n"
         "💡 <i>Используйте /help для повторного вызова этого меню</i>"
     )
@@ -503,43 +501,6 @@ async def cmd_unblock_torrents(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
 
-async def cmd_adblock_on(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
-    if not await _guard_admin(update, context, settings):
-        return
-    await update.message.reply_text("🛡️ <b>Включение блокировки рекламы...</b>", parse_mode="HTML")
-    await update.message.chat.send_action("typing")
-    res = run_vless(settings, ["block-ads"])  # CLI command
-    if res.returncode == 0:
-        await update.message.reply_text(
-            "✅ <b>AdBlock включён</b>\n\n"
-            "🚫 Блокируются домены: category-ads-all и популярные рекламные домены",
-            parse_mode="HTML"
-        )
-    else:
-        await update.message.reply_text(
-            f"❌ <b>Ошибка включения AdBlock:</b>\n<pre>{html_escape(res.stdout or 'Неизвестная ошибка')}</pre>",
-            parse_mode="HTML"
-        )
-
-
-async def cmd_adblock_off(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
-    if not await _guard_admin(update, context, settings):
-        return
-    await update.message.reply_text("🌐 <b>Отключение блокировки рекламы...</b>", parse_mode="HTML")
-    await update.message.chat.send_action("typing")
-    res = run_vless(settings, ["unblock-ads"])  # CLI command
-    if res.returncode == 0:
-        await update.message.reply_text(
-            "✅ <b>AdBlock отключён</b>\n\n"
-            "🌐 Весь трафик теперь пропускается",
-            parse_mode="HTML"
-        )
-    else:
-        await update.message.reply_text(
-            f"❌ <b>Ошибка отключения AdBlock:</b>\n<pre>{html_escape(res.stdout or 'Неизвестная ошибка')}</pre>",
-            parse_mode="HTML"
-        )
-
 async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, settings: Settings) -> None:
     query = update.callback_query
     if not query or not query.data:
@@ -611,8 +572,6 @@ def build_app(settings: Settings) -> Application:
     app.add_handler(CommandHandler("fix", lambda u, c: cmd_fix(u, c, settings)))
     app.add_handler(CommandHandler("block_torrents", lambda u, c: cmd_block_torrents(u, c, settings)))
     app.add_handler(CommandHandler("unblock_torrents", lambda u, c: cmd_unblock_torrents(u, c, settings)))
-    app.add_handler(CommandHandler("adblock_on", lambda u, c: cmd_adblock_on(u, c, settings)))
-    app.add_handler(CommandHandler("adblock_off", lambda u, c: cmd_adblock_off(u, c, settings)))
     app.add_handler(CommandHandler("doctor", lambda u, c: cmd_doctor(u, c, settings)))
     
     # Add callback query handler for delete confirmation

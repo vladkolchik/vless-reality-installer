@@ -60,6 +60,8 @@ Commands:
   fix                 Fix Xray file permissions and restart service
   block-torrents      Block torrent traffic (BitTorrent protocol and ports)
   unblock-torrents    Remove torrent blocking rules
+  block-ads           Enable ad blocking via routing (geosite:category-ads-all)
+  unblock-ads         Disable ad blocking rules
   doctor              Quick diagnosis: ports, service, last logs
 EOF
 }
@@ -74,6 +76,150 @@ sanitize() {
   echo -n "$s"
 }
 
+# Enable ad blocking rules
+block_ads() {
+  print_info "Adding ad blocking rules to Xray configuration..."
+
+  if [[ ! -f "$CONFIG_PATH" ]]; then
+    print_err "Configuration file not found: $CONFIG_PATH"
+    return 1
+  fi
+
+  # Create backup
+  local backup_path="${CONFIG_PATH}.backup.$(date +%Y%m%d_%H%M%S)"
+  cp "$CONFIG_PATH" "$backup_path"
+  print_info "Backup created: $backup_path"
+
+  # If ad rules already present, exit gracefully
+  if jq -e '.routing.rules[]? | select(.outboundTag == "block-ads")' "$CONFIG_PATH" >/dev/null 2>&1; then
+    print_warn "Ad blocking rules already exist"
+    return 0
+  fi
+
+  # Create temporary file
+  local temp_config
+  temp_config=$(mktemp)
+
+  # Ensure dedicated blackhole outbound for ads exists
+  jq 'if (.outbounds | map(select(.tag == "block-ads")) | length) == 0 \
+      then .outbounds += [{"protocol": "blackhole", "tag": "block-ads"}] else . end' "$CONFIG_PATH" > "${temp_config}.step1"
+
+  # Ensure routing section exists
+  jq 'if .routing then . else .routing = {} end' "${temp_config}.step1" > "${temp_config}.step2"
+
+  # Append ad blocking rules (preserve existing rules)
+  jq '.routing.rules = ((.routing.rules // []) + [
+        {"type": "field", "outboundTag": "block-ads", "domain": [
+          "geosite:category-ads-all",
+          "domain:doubleclick.net",
+          "domain:googleadservices.com",
+          "domain:googlesyndication.com",
+          "domain:pagead2.googlesyndication.com",
+          "domain:adservice.google.com",
+          "domain:ads.youtube.com"
+        ]}
+      ])' "${temp_config}.step2" > "$temp_config"
+
+  rm -f "${temp_config}.step1" "${temp_config}.step2"
+
+  # Validate JSON
+  if jq empty "$temp_config" 2>/dev/null; then
+    mv "$temp_config" "$CONFIG_PATH"
+    print_info "Configuration updated successfully"
+  else
+    print_err "Invalid JSON generated. Restoring backup..."
+    cp "$backup_path" "$CONFIG_PATH"
+    rm -f "$temp_config"
+    return 1
+  fi
+
+  # Test config
+  if command -v xray >/dev/null 2>&1; then
+    if ! xray -test -config "$CONFIG_PATH" 2>/dev/null; then
+      print_err "Configuration test failed. Restoring backup..."
+      cp "$backup_path" "$CONFIG_PATH"
+      return 1
+    fi
+  fi
+
+  # Restart service
+  print_info "Restarting Xray service..."
+  if restart_xray; then
+    print_info "✅ Ad blocking enabled successfully!"
+  else
+    print_err "Failed to restart Xray. Restoring backup..."
+    cp "$backup_path" "$CONFIG_PATH"
+    restart_xray
+<br>    return 1
+  fi
+}
+
+# Disable ad blocking rules
+unblock_ads() {
+  print_info "Removing ad blocking rules from Xray configuration..."
+
+  if [[ ! -f "$CONFIG_PATH" ]]; then
+    print_err "Configuration file not found: $CONFIG_PATH"
+    return 1
+  fi
+
+  # Create backup
+  local backup_path="${CONFIG_PATH}.backup.$(date +%Y%m%d_%H%M%S)"
+  cp "$CONFIG_PATH" "$backup_path"
+  print_info "Backup created: $backup_path"
+
+  # If no ad rules, nothing to do
+  if ! jq -e '.routing.rules[]? | select(.outboundTag == "block-ads")' "$CONFIG_PATH" >/dev/null 2>&1; then
+    print_warn "No ad blocking rules found"
+    return 0
+  fi
+
+  local temp_config
+  temp_config=$(mktemp)
+
+  # Remove only rules with outboundTag block-ads
+  jq 'if .routing.rules then .routing.rules = (.routing.rules | map(select(.outboundTag != "block-ads"))) else . end' "$CONFIG_PATH" > "${temp_config}.step1"
+
+  # Remove block-ads outbound if no rules reference it anymore
+  jq 'if (.routing.rules // []) | map(select(.outboundTag == "block-ads")) | length == 0 \
+        then .outbounds = (.outbounds | map(select(.tag != "block-ads"))) \
+        else . end' "${temp_config}.step1" > "${temp_config}.step2"
+
+  # Clean up routing section if empty
+  jq 'if .routing.rules and (.routing.rules | length) == 0 then del(.routing.rules) end | if (.routing // {} | length) == 0 then del(.routing) else . end' "${temp_config}.step2" > "$temp_config"
+
+  rm -f "${temp_config}.step1" "${temp_config}.step2"
+
+  # Validate JSON
+  if jq empty "$temp_config" 2>/dev/null; then
+    mv "$temp_config" "$CONFIG_PATH"
+    print_info "Configuration updated successfully"
+  else
+    print_err "Invalid JSON generated. Restoring backup..."
+    cp "$backup_path" "$CONFIG_PATH"
+    rm -f "$temp_config"
+    return 1
+  fi
+
+  # Test config and restart
+  if command -v xray >/dev/null 2>&1; then
+    if ! xray -test -config "$CONFIG_PATH" 2>/dev/null; then
+      print_err "Configuration test failed. Restoring backup..."
+      cp "$backup_path" "$CONFIG_PATH"
+      return 1
+    fi
+  fi
+
+  print_info "Restarting Xray service..."
+  if restart_xray; then
+    print_info "✅ Ad blocking removed successfully!"
+  else
+    print_err "Failed to restart Xray. Restoring backup..."
+    cp "$backup_path" "$CONFIG_PATH"
+    restart_xray
+    return 1
+  fi
+}
 # Read common Reality parameters from config
 read_reality_params() {
   require_file "$CONFIG_PATH"
@@ -514,6 +660,14 @@ main() {
     unblock-torrents)
       require_root
       unblock_torrents
+      ;;
+    block-ads)
+      require_root
+      block_ads
+      ;;
+    unblock-ads)
+      require_root
+      unblock_ads
       ;;
     doctor)
       doctor

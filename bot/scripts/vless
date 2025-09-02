@@ -101,7 +101,7 @@ block_ads() {
   temp_config=$(mktemp)
 
   # Ensure dedicated blackhole outbound for ads exists
-  jq 'if (.outbounds | map(select(.tag == "block-ads")) | length) == 0 \
+  jq 'if (.outbounds | map(select(.tag == "block-ads")) | length) == 0
       then .outbounds += [{"protocol": "blackhole", "tag": "block-ads"}] else . end' "$CONFIG_PATH" > "${temp_config}.step1"
 
   # Ensure routing section exists
@@ -150,7 +150,7 @@ block_ads() {
     print_err "Failed to restart Xray. Restoring backup..."
     cp "$backup_path" "$CONFIG_PATH"
     restart_xray
-<br>    return 1
+    return 1
   fi
 }
 
@@ -181,8 +181,8 @@ unblock_ads() {
   jq 'if .routing.rules then .routing.rules = (.routing.rules | map(select(.outboundTag != "block-ads"))) else . end' "$CONFIG_PATH" > "${temp_config}.step1"
 
   # Remove block-ads outbound if no rules reference it anymore
-  jq 'if (.routing.rules // []) | map(select(.outboundTag == "block-ads")) | length == 0 \
-        then .outbounds = (.outbounds | map(select(.tag != "block-ads"))) \
+  jq 'if (.routing.rules // []) | map(select(.outboundTag == "block-ads")) | length == 0
+        then .outbounds = (.outbounds | map(select(.tag != "block-ads")))
         else . end' "${temp_config}.step1" > "${temp_config}.step2"
 
   # Clean up routing section if empty

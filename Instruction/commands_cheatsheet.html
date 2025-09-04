@@ -31,57 +31,43 @@
     <div class="container">
         <div class="header">
             <h1>Чит‑лист основных команд</h1>
-            <p>Xray (VLESS+Reality), сервисы, сеть, фаервол, пользователи и удаление</p>
+            <p>Пошаговые команды для установки, настройки и управления VLESS+Reality VPN</p>
         </div>
 
         <div class="grid">
+            <!-- 1. УСТАНОВКА VPN -->
             <div class="section">
-                <h2>Система <span class="tag">Linux</span></h2>
-                <div class="cmd"><button class="copy">Копировать</button>sudo reboot</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl reboot</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo shutdown -r now</div>
-                <p class="note">Перезапуск/перезагрузка системы.</p>
+                <h2>1️⃣ Установка VLESS+Reality VPN <span class="tag">Первый шаг</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)</div>
+                <p class="note">🚀 <strong>Основная установка:</strong> X-ray, конфигурация Reality, генерация ключей, настройка firewall, fail2ban и создание пользователя с sudo-правами.</p>
             </div>
 
+            <!-- 2. TELEGRAM БОТ -->
             <div class="section">
-                <h2>Xray (VLESS+Reality)</h2>
-                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl restart xray</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl status xray | cat</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo journalctl -u xray -f</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo nano /usr/local/etc/xray/config.json</div>
-                <p class="note">Управление сервисом и правка конфигурации.</p>
-            </div>
-
-            <div class="section">
-                <h2>vless CLI</h2>
-                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless add MyPhone</div>
-                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless list</div>
-                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless show MyPhone</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless del MyPhone</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless restart</div>
-                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless doctor</div>
-                <ul class="list">
-                    <li><code>vless add &lt;name&gt;</code>: добавляет клиента (имя сохраняется в поле <code>email</code>). Выводит UUID. После добавления перезапустите Xray: <code>sudo vless restart</code>.</li>
-                    <li><code>vless list</code>: список клиентов (UUID | NAME) агрегировано по всем VLESS-входам.</li>
-                    <li><code>vless show &lt;name|uuid&gt;</code>: печатает 2 ссылки (443/80) и сохраняет QR-коды в <code>/root/vless-configs</code> (нужен <code>qrencode</code>).</li>
-                    <li><code>vless del &lt;name|uuid&gt;</code>: удаляет клиента из всех VLESS-входов. Затем: <code>sudo vless restart</code>.</li>
-                    <li><code>vless restart</code>: перезапуск службы Xray.</li>
-                    <li><code>vless doctor</code>: краткая диагностика — статус сервиса, последние логи, прослушиваемые порты, внешний IP.</li>
-                </ul>
-            </div>
-
-            <div class="section">
-                <h2>Телеграм‑бот (установка/обновление)</h2>
+                <h2>2️⃣ Telegram-бот (опционально) <span class="tag">Удобное управление</span></h2>
                 <div class="cmd"><button class="copy">Копировать</button>bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh)</div>
                 <div class="cmd"><button class="copy">Копировать</button>bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_bot.sh) update</div>
                 <div class="cmd"><button class="copy">Копировать</button>systemctl status vless-bot | cat</div>
                 <div class="cmd"><button class="copy">Копировать</button>sudo systemctl restart vless-bot</div>
-                <div class="cmd"><button class="copy">Копировать</button>journalctl -u vless-bot -n 50 | cat</div>
-                <p class="note">Установка, обновление и управление сервисом бота.</p>
+                <div class="cmd"><button class="copy">Копировать</button>journalctl -u vless-bot -n 20 | cat</div>
+                <p class="note">📱 <strong>Telegram-бот:</strong> установка, обновление и управление сервисом для удобного создания VPN-клиентов через мессенджер.</p>
             </div>
 
+            <!-- 3. СОЗДАНИЕ КЛИЕНТОВ -->
             <div class="section">
-                <h2>Команды Телеграм‑бота</h2>
+                <h2>3️⃣ Создание VPN-клиентов <span class="tag">CLI команды</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless test</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless add MyPhone</div>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless list</div>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless show MyPhone</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless del MyPhone</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless fix</div>
+                <p class="note">👥 <strong>Управление клиентами:</strong> <code>test</code> - проверка конфигурации, <code>add</code> - создание клиента, <code>list</code> - список всех клиентов, <code>show</code> - получение QR-кодов и ссылок, <code>del</code> - удаление, <code>fix</code> - исправление прав доступа.</p>
+            </div>
+
+            <!-- 4. TELEGRAM БОТ КОМАНДЫ -->
+            <div class="section">
+                <h2>4️⃣ Команды Telegram-бота <span class="tag">Через мессенджер</span></h2>
                 <div class="cmd"><button class="copy">Копировать</button>/start</div>
                 <div class="cmd"><button class="copy">Копировать</button>/add iPhone_John</div>
                 <div class="cmd"><button class="copy">Копировать</button>/list</div>
@@ -90,72 +76,107 @@
                 <div class="cmd"><button class="copy">Копировать</button>/restart</div>
                 <div class="cmd"><button class="copy">Копировать</button>/block_torrents</div>
                 <div class="cmd"><button class="copy">Копировать</button>/unblock_torrents</div>
+                <div class="cmd"><button class="copy">Копировать</button>/fix</div>
                 <div class="cmd"><button class="copy">Копировать</button>/doctor</div>
-                <ul class="list">
-                    <li><code>/start</code> или <code>/help</code> — показать меню команд с описанием.</li>
-                    <li><code>/add &lt;name&gt;</code> — создать клиента, получить ссылки 443/80 и QR‑коды. Автоматически применяется без перезапуска.</li>
-                    <li><code>/list</code> — показать всех клиентов с именами, UUID, копируемыми ссылками и QR для каждого.</li>
-                    <li><code>/show &lt;name|uuid&gt;</code> — показать конфигурацию конкретного клиента с ссылками и QR.</li>
-                    <li><code>/del &lt;name|uuid&gt;</code> — удалить клиента с подтверждением. После удаления рекомендуется <code>/restart</code>.</li>
-                    <li><code>/restart</code> — перезапустить Xray для применения изменений конфигурации.</li>
-                    <li><code>/block_torrents</code> — заблокировать торрент-трафик (BitTorrent протокол, порты 6881-6889, популярные домены).</li>
-                    <li><code>/unblock_torrents</code> — разблокировать торрент-трафик, весь трафик снова проходит через VPN.</li>
-                    <li><code>/doctor</code> — диагностика: статус сервиса, логи, порты, внешний IP.</li>
-                </ul>
-                <p class="note">🔒 Бот отвечает только администраторам (ID из <code>TELEGRAM_ADMINS</code> в <code>/etc/vless-bot.env</code>). Неавторизованные пользователи игнорируются.</p>
+                <p class="note">🤖 <strong>Управление через Telegram:</strong> все основные функции доступны через бота. <code>/start</code> - справка, <code>/add</code> - создание клиента с автоматической генерацией QR, <code>/fix</code> - исправление прав доступа, <code>/block_torrents</code> - блокировка торрентов.</p>
+                <p class="note">🔒 <strong>Безопасность:</strong> бот отвечает только администраторам (ID из <code>TELEGRAM_ADMINS</code> в <code>/etc/vless-bot.env</code>).</p>
             </div>
 
+            <!-- 5. УПРАВЛЕНИЕ XRAY -->
             <div class="section">
-                <h2>Конфигурации клиента</h2>
-                <div class="cmd"><button class="copy">Копировать</button>ls -1 /root/vless-configs</div>
-                <div class="cmd"><button class="copy">Копировать</button>cat /root/vless-configs/config_1_443.txt</div>
-                <div class="cmd"><button class="copy">Копировать</button>scp root@SERVER_IP:/root/vless-configs/config_1_443.png .</div>
-                <p class="note">Где лежат URL и QR‑коды для подключения.</p>
+                <h2>5️⃣ Управление X-ray сервисом <span class="tag">Системные команды</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl status xray | cat</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl restart xray</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl enable xray</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo journalctl -u xray -f</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo journalctl -u xray -n 50 | cat</div>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/xray -test -c /usr/local/etc/xray/config.json</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless restart</div>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless doctor</div>
+                <p class="note">⚙️ <strong>Сервис X-ray:</strong> проверка статуса, перезапуск, просмотр логов, тестирование конфигурации. <code>vless restart</code> включает исправление прав доступа, <code>vless doctor</code> - комплексная диагностика.</p>
             </div>
 
+            <!-- 6. БЛОКИРОВКА ТОРРЕНТОВ -->
             <div class="section">
-                <h2>Фаервол (UFW)</h2>
-                <div class="cmd"><button class="copy">Копировать</button>sudo ufw status verbose | cat</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo ufw allow 443/tcp && sudo ufw allow 80/tcp</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo ufw reload</div>
-                <p class="note">Открыть порты 443 и 80, проверить статус.</p>
+                <h2>6️⃣ Блокировка торрентов <span class="tag">Дополнительно</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless block-torrents</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/vless unblock-torrents</div>
+                <p class="note">🚫 <strong>Торрент-фильтры:</strong> блокировка BitTorrent протокола, портов 6881-6889, 51413, популярных трекеров. Автоматически создает резервную копию конфигурации и перезапускает X-ray.</p>
             </div>
 
+            <!-- 7. КОНФИГУРАЦИИ И ФАЙЛЫ -->
             <div class="section">
-                <h2>Fail2ban</h2>
-                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl status fail2ban | cat</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo journalctl -u fail2ban -f</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo fail2ban-client status</div>
-                <p class="note">Статус и логи Fail2ban.</p>
+                <h2>7️⃣ Конфигурации и файлы <span class="tag">Местоположение</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>ls -la /root/vless-configs/</div>
+                <div class="cmd"><button class="copy">Копировать</button>cat /root/vless-configs/README.txt</div>
+                <div class="cmd"><button class="copy">Копировать</button>scp root@SERVER_IP:/root/vless-configs/MyPhone_443.png .</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo nano /usr/local/etc/xray/config.json</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo nano /etc/vless-bot.env</div>
+                <p class="note">📁 <strong>Файлы системы:</strong> <code>/root/vless-configs/</code> - QR-коды и ссылки клиентов, <code>/usr/local/etc/xray/config.json</code> - конфигурация X-ray, <code>/etc/vless-bot.env</code> - настройки Telegram-бота.</p>
             </div>
 
+            <!-- 8. ПОЛЬЗОВАТЕЛИ И БЕЗОПАСНОСТЬ -->
             <div class="section">
-                <h2>Сеть и диагностика</h2>
-                <div class="cmd"><button class="copy">Копировать</button>ss -ltnp | grep ':443' || true</div>
-                <div class="cmd"><button class="copy">Копировать</button>ss -ltnp -6 | grep ':443' || true</div>
-                <div class="cmd"><button class="copy">Копировать</button>curl -s ifconfig.me</div>
-                <div class="cmd"><button class="copy">Копировать</button>sudo tcpdump -nni any 'tcp port 443' -c 30</div>
-                <div class="cmd"><button class="copy">Копировать</button>nc -vz SERVER_IP 443</div>
-                <p class="note">Проверка портов, внешнего IP и входящих соединений.</p>
-            </div>
-
-            <div class="section">
-                <h2>Пользователи и sudo</h2>
+                <h2>8️⃣ Пользователи и безопасность <span class="tag">Управление доступом</span></h2>
                 <div class="cmd"><button class="copy">Копировать</button>sudo /usr/local/bin/grant-sudo NEWUSER</div>
                 <div class="cmd"><button class="copy">Копировать</button>sudo passwd NEWUSER</div>
                 <div class="cmd"><button class="copy">Копировать</button>id NEWUSER</div>
-                <p class="note">Создание пользователя с sudo и установка пароля.</p>
+                <div class="cmd"><button class="copy">Копировать</button>sudo usermod -aG sudo NEWUSER</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo userdel -r OLDUSER</div>
+                <p class="note">👤 <strong>Управление пользователями:</strong> <code>grant-sudo</code> - создание пользователя с sudo-правами, <code>passwd</code> - установка пароля, <code>usermod -aG sudo</code> - добавление в группу sudo, <code>userdel -r</code> - удаление пользователя с домашней папкой.</p>
             </div>
 
+            <!-- 9. ДИАГНОСТИКА И МОНИТОРИНГ -->
             <div class="section">
-                <h2>Удаление (деинсталляция)</h2>
+                <h2>9️⃣ Диагностика и мониторинг <span class="tag">Проверка работы</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>/usr/local/bin/vless doctor</div>
+                <div class="cmd"><button class="copy">Копировать</button>ss -ltnp | grep -E ':(443|80)' || echo "Порты не прослушиваются"</div>
+                <div class="cmd"><button class="copy">Копировать</button>curl -s ifconfig.me</div>
+                <div class="cmd"><button class="copy">Копировать</button>ping -c 4 8.8.8.8</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo tcpdump -nni any 'tcp port 443' -c 10</div>
+                <div class="cmd"><button class="copy">Копировать</button>nc -vz $(curl -s ifconfig.me) 443</div>
+                <p class="note">🔍 <strong>Диагностика сети:</strong> <code>vless doctor</code> - комплексная проверка, <code>ss</code> - проверка портов, <code>curl ifconfig.me</code> - внешний IP, <code>tcpdump</code> - мониторинг трафика, <code>nc</code> - проверка доступности портов.</p>
+            </div>
+
+            <!-- 10. FIREWALL И FAIL2BAN -->
+            <div class="section">
+                <h2>🔟 Firewall и Fail2ban <span class="tag">Безопасность сети</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo ufw status verbose | cat</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo ufw allow 443/tcp && sudo ufw allow 80/tcp</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo ufw reload</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl status fail2ban | cat</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo fail2ban-client status</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo journalctl -u fail2ban -n 20 | cat</div>
+                <p class="note">🛡️ <strong>Защита сервера:</strong> UFW firewall управляет доступом к портам, Fail2ban блокирует подозрительные IP после неудачных попыток подключения. Основные порты VPN: 443 и 80.</p>
+            </div>
+
+            <!-- 11. СИСТЕМА -->
+            <div class="section">
+                <h2>1️⃣1️⃣ Система <span class="tag">Управление сервером</span></h2>
+                <div class="cmd"><button class="copy">Копировать</button>sudo reboot</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo systemctl reboot</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo shutdown -h now</div>
+                <div class="cmd"><button class="copy">Копировать</button>df -h</div>
+                <div class="cmd"><button class="copy">Копировать</button>free -h</div>
+                <div class="cmd"><button class="copy">Копировать</button>top -n 1 -b | head -20</div>
+                <div class="cmd"><button class="copy">Копировать</button>sudo apt update && sudo apt upgrade -y</div>
+                <p class="note">💻 <strong>Системные команды:</strong> перезагрузка, выключение, проверка дискового пространства, памяти, процессов и обновление системы.</p>
+            </div>
+
+            <!-- 12. УДАЛЕНИЕ -->
+            <div class="section">
+                <h2>1️⃣2️⃣ Полное удаление <span class="tag">Деинсталляция</span></h2>
                 <div class="cmd"><button class="copy">Копировать</button>sudo vless-uninstall --yes</div>
                 <div class="cmd"><button class="copy">Копировать</button>sudo vless-uninstall --yes --reset-firewall</div>
-                <p class="note">Удаляет Xray, конфиги, Fail2ban, вспомогательные скрипты. Опция reset-firewall очищает правила фаервола.</p>
+                <p class="note">🗑️ <strong>Полная очистка:</strong> удаляет X-ray, все конфигурации, QR-коды, Fail2ban, вспомогательные скрипты и пользователей. Флаг <code>--reset-firewall</code> также очищает правила фаервола (осторожно - может заблокировать SSH!).</p>
             </div>
         </div>
 
-        <p class="footer">Поддерживайте систему в актуальном состоянии, делайте бэкапы конфигов перед изменениями.</p>
+        <p class="footer">
+            💡 <strong>Совет:</strong> Выполняйте команды по порядку (1️⃣→2️⃣→3️⃣...). Регулярно делайте бэкапы конфигураций. 
+            Используйте <code>vless doctor</code> для диагностики проблем. 
+            <br>🔄 <strong>Обновления:</strong> периодически обновляйте систему и компоненты VPN для безопасности.
+        </p>
     </div>
 
     <script>

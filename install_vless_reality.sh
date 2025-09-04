@@ -93,6 +93,16 @@ install_xray() {
     else
         print_warning "X-ray установлен, но не запущен. Будет настроен позже."
     fi
+
+    # Обновим сервисный файл, если он использует небезопасного пользователя 'nobody'
+    if [[ -f /etc/systemd/system/xray.service ]]; then
+        if grep -qE '^User=\s*nobody' /etc/systemd/system/xray.service 2>/dev/null; then
+            print_warning "Обнаружен небезопасный пользователь 'nobody' в xray.service — меняю на 'root'"
+            sed -i 's/^User=.*/User=root/' /etc/systemd/system/xray.service || true
+            sed -i 's/^Group=.*/Group=root/' /etc/systemd/system/xray.service || true
+            systemctl daemon-reload || true
+        fi
+    fi
 }
 
 # Функция генерации ключей и конфигурации
@@ -145,7 +155,8 @@ create_xray_config() {
     },
     "inbounds": [
         {
-            "port": 443, 
+            "port": 443,
+            "tag": "vless-reality-443",
             "protocol": "vless",
             "settings": {
                 "clients": [
@@ -160,7 +171,9 @@ create_xray_config() {
                 "network": "tcp",
                 "security": "reality",
                 "realitySettings": {
+                    "show": false,
                     "dest": "$DEST_SITE:443",
+                    "xver": 0,
                     "serverNames": [
                         "$DEST_SITE",
                         "www.$DEST_SITE"
@@ -183,6 +196,7 @@ create_xray_config() {
             },
             {
                 "port": 80,
+                "tag": "vless-reality-80",
                 "protocol": "vless",
                 "settings": {
                     "clients": [
@@ -197,7 +211,9 @@ create_xray_config() {
                     "network": "tcp",
                     "security": "reality",
                     "realitySettings": {
+                        "show": false,
                         "dest": "$DEST_SITE:443",
+                        "xver": 0,
                         "serverNames": [
                             "$DEST_SITE",
                             "www.$DEST_SITE"
@@ -222,7 +238,8 @@ create_xray_config() {
     "outbounds": [
         {
             "protocol": "freedom",
-            "tag": "direct"
+            "tag": "direct",
+            "settings": {}
         }
     ]
 }

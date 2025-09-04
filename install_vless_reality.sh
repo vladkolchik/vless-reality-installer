@@ -85,7 +85,7 @@ install_packages() {
 # Функция установки X-ray
 install_xray() {
     print_step "Установка X-ray сервера..."
-    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --version v25.8.29
     
     # Проверка установки
     if systemctl is-active --quiet xray; then

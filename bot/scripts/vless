@@ -60,6 +60,7 @@ Commands:
   fix                 Fix Xray file permissions and restart service
   block-torrents      Block torrent traffic (BitTorrent protocol and ports)
   unblock-torrents    Remove torrent blocking rules
+  test                Test configuration reading and key availability
   doctor              Quick diagnosis: ports, service, last logs
 EOF
 }
@@ -114,7 +115,7 @@ read_reality_params() {
     
     # Method 3: Last resort - generate new pair to understand format
     if [[ -z "$PUBLIC_KEY" ]]; then
-      print_warn "Alternative parsing failed, trying format detection...")
+      print_warn "Alternative parsing failed, trying format detection..."
       if xout=$(xray x25519 2>/dev/null); then
         # This generates a new pair, but we can use it to understand the format
         local sample_public=$(echo "$xout" | grep -i "public" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
@@ -532,7 +533,6 @@ main() {
       ;;
     show)
       local key="${1:-}"; shift || true
-      read_reality_params
       show_client "$key"
       ;;
     del)
@@ -559,6 +559,28 @@ main() {
       ;;
     doctor)
       doctor
+      ;;
+    test)
+      # Test configuration reading without requiring root
+      print_info "Testing configuration reading..."
+      if [[ -f "$CONFIG_PATH" ]]; then
+        print_info "Config file exists: $CONFIG_PATH"
+        if command -v jq >/dev/null 2>&1; then
+          local private_key=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.privateKey' "$CONFIG_PATH" | head -n1)
+          local public_key=$(jq -r '.inbounds[] | select(.protocol=="vless") | .streamSettings.realitySettings.publicKey // empty' "$CONFIG_PATH" | head -n1)
+          print_info "Private key found: ${private_key:+YES}"
+          print_info "Public key found: ${public_key:+YES}"
+          if [[ -n "$public_key" && "$public_key" != "null" ]]; then
+            print_info "✅ Configuration appears ready for client generation"
+          else
+            print_warn "⚠️  Public key missing from config, will try to derive"
+          fi
+        else
+          print_err "jq not available for config testing"
+        fi
+      else
+        print_err "Config file not found: $CONFIG_PATH"
+      fi
       ;;
     -h|--help|help|"")
       usage

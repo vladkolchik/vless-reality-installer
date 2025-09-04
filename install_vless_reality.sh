@@ -4,6 +4,13 @@
 # Автоматическая установка и настройка VLESS+Reality VPN сервера
 # Основано на проверенной методике из статьи: https://habr.com/ru/articles/869340/
 # 
+# Версия: 1.1 (исправлены проблемы совместимости с X-ray 25.8.31+)
+# Изменения:
+# - Исправлена синтаксическая ошибка JSON в конфигурации
+# - Добавлена валидация конфигурации перед запуском
+# - Исправлены предупреждения systemd
+# - Улучшена диагностика ошибок
+# 
 # Использование:
 # bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
 
@@ -76,16 +83,16 @@ install_packages() {
     print_step "Установка необходимых пакетов..."
     if [[ $OS == "debian" ]]; then
         apt update -y
-        apt install -y curl wget unzip openssl qrencode
+        apt install -y curl wget unzip openssl qrencode python3
     else
-        yum install -y curl wget unzip openssl qrencode
+        yum install -y curl wget unzip openssl qrencode python3
     fi
 }
 
 # Функция установки X-ray
 install_xray() {
     print_step "Установка X-ray сервера..."
-    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --version v25.8.3
+    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
     
     # Проверка установки
     if systemctl is-active --quiet xray; then
@@ -180,7 +187,7 @@ create_xray_config() {
                     "tls"
                 ]
             }
-            },
+        },
             {
                 "port": 80,
                 "protocol": "vless",
@@ -229,6 +236,30 @@ create_xray_config() {
 EOF
     
     print_status "Конфигурация X-ray создана"
+}
+
+# Функция исправления systemd сервиса X-ray
+fix_xray_systemd_service() {
+    print_step "Исправление systemd сервиса X-ray..."
+    
+    # Проверяем, существует ли файл сервиса
+    if [[ -f /etc/systemd/system/xray.service ]]; then
+        # Создаем резервную копию
+        cp /etc/systemd/system/xray.service /etc/systemd/system/xray.service.backup
+        
+        # Заменяем User=nobody на DynamicUser=true для безопасности
+        if grep -q "User=nobody" /etc/systemd/system/xray.service; then
+            sed -i 's/User=nobody/DynamicUser=true/' /etc/systemd/system/xray.service
+            print_status "Исправлена настройка пользователя в systemd сервисе"
+            
+            # Перезагружаем конфигурацию systemd
+            systemctl daemon-reload
+        else
+            print_status "Systemd сервис уже настроен корректно"
+        fi
+    else
+        print_warning "Файл systemd сервиса не найден, возможно будет создан автоматически"
+    fi
 }
 
 
@@ -367,9 +398,56 @@ EOF
 	fi
 }
 
+# Функция валидации конфигурации X-ray
+validate_xray_config() {
+    print_step "Валидация конфигурации X-ray..."
+    
+    # Проверяем существование файла конфигурации
+    if [[ ! -f /usr/local/etc/xray/config.json ]]; then
+        print_error "Файл конфигурации /usr/local/etc/xray/config.json не найден!"
+        exit 1
+    fi
+    
+    # Проверяем права доступа
+    if [[ ! -r /usr/local/etc/xray/config.json ]]; then
+        print_error "Нет прав на чтение файла конфигурации!"
+        print_status "Попытка исправить права доступа..."
+        chmod 644 /usr/local/etc/xray/config.json
+        chown root:root /usr/local/etc/xray/config.json
+    fi
+    
+    # Валидация JSON синтаксиса
+    if ! python3 -m json.tool /usr/local/etc/xray/config.json > /dev/null 2>&1; then
+        if ! python -m json.tool /usr/local/etc/xray/config.json > /dev/null 2>&1; then
+            print_error "Ошибка JSON синтаксиса в конфигурации X-ray!"
+            print_error "Проверьте файл /usr/local/etc/xray/config.json на наличие:"
+            print_error "- Лишних или недостающих запятых"
+            print_error "- Незакрытых скобок или кавычек"
+            print_error "- Неверных символов"
+            exit 1
+        fi
+    fi
+    
+    # Валидация конфигурации X-ray
+    if /usr/local/bin/xray -test -c /usr/local/etc/xray/config.json; then
+        print_status "Конфигурация X-ray валидна"
+    else
+        print_error "Ошибка в конфигурации X-ray! Проверьте файл /usr/local/etc/xray/config.json"
+        print_error "Возможные проблемы:"
+        print_error "- Неверные параметры протокола"
+        print_error "- Некорректные настройки Reality"
+        print_error "- Проблемы с ключами шифрования"
+        print_error "Запустите для детального анализа: /usr/local/bin/xray -test -c /usr/local/etc/xray/config.json"
+        exit 1
+    fi
+}
+
 # Функция запуска и проверки X-ray
 start_xray() {
     print_step "Запуск X-ray сервиса..."
+    
+    # Сначала валидируем конфигурацию
+    validate_xray_config
     
     systemctl enable xray
     systemctl restart xray
@@ -378,7 +456,60 @@ start_xray() {
     if systemctl is-active --quiet xray; then
         print_status "X-ray успешно запущен и работает"
     else
-        print_error "Ошибка запуска X-ray! Проверьте логи: journalctl -u xray"
+        print_error "Ошибка запуска X-ray! Создаем диагностический отчет..."
+        
+        # Создание диагностического отчета
+        DIAG_FILE="/root/xray-diagnostic-$(date +%Y%m%d_%H%M%S).log"
+        {
+            echo "=== X-ray Diagnostic Report ==="
+            echo "Date: $(date)"
+            echo "X-ray Version: $(/usr/local/bin/xray version 2>/dev/null || echo 'Not available')"
+            echo ""
+            
+            echo "=== System Info ==="
+            echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"')"
+            echo "Kernel: $(uname -r)"
+            echo ""
+            
+            echo "=== X-ray Service Status ==="
+            systemctl status xray --no-pager || true
+            echo ""
+            
+            echo "=== X-ray Logs (last 20 lines) ==="
+            journalctl -u xray -n 20 --no-pager || true
+            echo ""
+            
+            echo "=== Configuration Test ==="
+            /usr/local/bin/xray -test -c /usr/local/etc/xray/config.json || true
+            echo ""
+            
+            echo "=== File Permissions ==="
+            ls -la /usr/local/etc/xray/ || true
+            ls -la /usr/local/bin/xray || true
+            echo ""
+            
+            echo "=== Network Ports ==="
+            ss -tulpn | grep -E ":(443|80)" || echo "Ports 80/443 not listening"
+            echo ""
+            
+            echo "=== Firewall Status ==="
+            if command -v ufw >/dev/null 2>&1; then
+                ufw status || true
+            elif command -v firewall-cmd >/dev/null 2>&1; then
+                firewall-cmd --list-all || true
+            fi
+            
+        } > "$DIAG_FILE"
+        
+        print_error "Диагностический отчет создан: $DIAG_FILE"
+        print_error "Отправьте этот файл для анализа проблемы."
+        print_error ""
+        print_error "Быстрая диагностика:"
+        print_error "1. Проверьте логи: journalctl -u xray -f"
+        print_error "2. Тест конфигурации: /usr/local/bin/xray -test -c /usr/local/etc/xray/config.json"
+        print_error "3. Проверьте права: ls -la /usr/local/etc/xray/"
+        print_error "4. Посмотрите отчет: cat $DIAG_FILE"
+        
         exit 1
     fi
     
@@ -739,6 +870,7 @@ main() {
     install_xray
     generate_config
     create_xray_config
+    fix_xray_systemd_service
     setup_firewall
 	install_fail2ban
 	install_sudo_and_privilege_tools

@@ -96,6 +96,8 @@ info "Installing/upgrading Python deps"
 "$BOT_DST_DIR/.venv/bin/pip" install --upgrade pip >/dev/null
 "$BOT_DST_DIR/.venv/bin/pip" install -r "$BOT_DST_DIR/requirements.txt"
 
+info "Installed/updated bot and CLI files"
+
 if [[ -f "$ENV_DST" ]]; then
   warn "$ENV_DST exists; leaving as is"
 else

@@ -293,6 +293,7 @@ create_xray_config() {
                         "www.$DEST_SITE"
                     ],
                     "privateKey": "$PRIVATE_KEY",
+                    "publicKey": "$PUBLIC_KEY",
                     "shortIds": [   
                         "$SHORT_ID1",
                         "$SHORT_ID2",
@@ -323,19 +324,20 @@ create_xray_config() {
                 "streamSettings": {
                     "network": "tcp",
                     "security": "reality",
-                    "realitySettings": {
-                        "dest": "$DEST_SITE:443",
-                        "serverNames": [
-                            "$DEST_SITE",
-                            "www.$DEST_SITE"
-                        ],
-                        "privateKey": "$PRIVATE_KEY",
-                        "shortIds": [
-                            "$SHORT_ID1",
-                            "$SHORT_ID2",
-                            "$SHORT_ID3"
-                        ]
-                    }
+                                    "realitySettings": {
+                    "dest": "$DEST_SITE:443",
+                    "serverNames": [
+                        "$DEST_SITE",
+                        "www.$DEST_SITE"
+                    ],
+                    "privateKey": "$PRIVATE_KEY",
+                    "publicKey": "$PUBLIC_KEY",
+                    "shortIds": [
+                        "$SHORT_ID1",
+                        "$SHORT_ID2",
+                        "$SHORT_ID3"
+                    ]
+                }
                 },
                 "sniffing": {
                     "enabled": true,

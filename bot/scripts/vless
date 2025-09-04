@@ -85,16 +85,58 @@ read_reality_params() {
     print_err "Could not read Reality privateKey from $CONFIG_PATH"
     exit 1
   fi
-  # Derive public key from private
-  require_dep xray
-  local xout
-  if xout=$(xray x25519 -i "$PRIVATE_KEY" 2>/dev/null); then
-    PUBLIC_KEY=$(echo "$xout" | awk '/Public key:/ {print $3; exit}')
+  
+  # Try to get public key from config first (preferred method)
+  PUBLIC_KEY=$(jq -r "${jq_base} | .streamSettings.realitySettings.publicKey // empty" "$CONFIG_PATH" | head -n1)
+  
+  if [[ -n "$PUBLIC_KEY" && "$PUBLIC_KEY" != "null" ]]; then
+    print_info "Using public key from configuration"
+  else
+    # If not in config, try to derive from private key
+    require_dep xray
+    local xout
+    PUBLIC_KEY=""
+    
+    print_info "Public key not found in config, deriving from private key..."
+    
+    # Method 1: Try xray x25519 -i (input private key)
+    if xout=$(xray x25519 -i "$PRIVATE_KEY" 2>/dev/null); then
+      PUBLIC_KEY=$(echo "$xout" | grep -i "public" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+    fi
+    
+    # Method 2: If method 1 failed, try alternative parsing
+    if [[ -z "$PUBLIC_KEY" ]]; then
+      print_warn "Standard derivation failed, trying alternative parsing..."
+      if xout=$(xray x25519 -i "$PRIVATE_KEY" 2>/dev/null); then
+        PUBLIC_KEY=$(echo "$xout" | grep -oE '[A-Za-z0-9+/=_-]{32,}' | tail -1)
+      fi
+    fi
+    
+    # Method 3: Last resort - generate new pair to understand format
+    if [[ -z "$PUBLIC_KEY" ]]; then
+      print_warn "Alternative parsing failed, trying format detection...")
+      if xout=$(xray x25519 2>/dev/null); then
+        # This generates a new pair, but we can use it to understand the format
+        local sample_public=$(echo "$xout" | grep -i "public" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+        
+        if [[ -n "$sample_public" ]]; then
+          # Now try again with our private key using the same parsing method
+          if xout2=$(xray x25519 -i "$PRIVATE_KEY" 2>/dev/null); then
+            PUBLIC_KEY=$(echo "$xout2" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | tail -1)
+          fi
+        fi
+      fi
+    fi
+    
+    if [[ -z "$PUBLIC_KEY" ]]; then
+      print_err "Failed to derive public key from private key"
+      print_err "This might be due to changes in X-ray x25519 command format"
+      print_err "Try running manually: xray x25519 -i \"$PRIVATE_KEY\""
+      print_err "Or regenerate the server configuration to include publicKey"
+      exit 1
+    fi
   fi
-  if [[ -z "${PUBLIC_KEY:-}" ]]; then
-    print_err "Failed to derive public key from private key"
-    exit 1
-  fi
+  
   # Short ID: use first one
   SHORT_ID=$(jq -r "${jq_base} | .streamSettings.realitySettings.shortIds[0]" "$CONFIG_PATH" | head -n1)
   if [[ -z "$SHORT_ID" || "$SHORT_ID" == "null" ]]; then

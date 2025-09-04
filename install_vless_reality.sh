@@ -4,12 +4,14 @@
 # Автоматическая установка и настройка VLESS+Reality VPN сервера
 # Основано на проверенной методике из статьи: https://habr.com/ru/articles/869340/
 # 
-# Версия: 1.1 (исправлены проблемы совместимости с X-ray 25.8.31+)
+# Версия: 1.2 (исправлены проблемы совместимости с X-ray 25.8.31+)
 # Изменения:
 # - Исправлена синтаксическая ошибка JSON в конфигурации
+# - Исправлена проблема с генерацией privateKey для Reality
+# - Генерация ключей перенесена после установки X-ray
 # - Добавлена валидация конфигурации перед запуском
 # - Исправлены предупреждения systemd
-# - Улучшена диагностика ошибок
+# - Улучшена диагностика ошибок и отладка ключей
 # 
 # Использование:
 # bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
@@ -102,21 +104,13 @@ install_xray() {
     fi
 }
 
-# Функция генерации ключей и конфигурации
-generate_config() {
-    print_step "Генерация ключей и конфигурации..."
+# Функция генерации основных параметров
+generate_basic_config() {
+    print_step "Генерация базовых параметров конфигурации..."
     
     # Генерация UUID
     USER_UUID=$(generate_uuid)
     print_status "UUID: $USER_UUID"
-    
-    # Генерация X25519 ключей
-    KEY_PAIR=$(xray x25519)
-    PRIVATE_KEY=$(echo "$KEY_PAIR" | grep "Private key:" | cut -d' ' -f3)
-    PUBLIC_KEY=$(echo "$KEY_PAIR" | grep "Public key:" | cut -d' ' -f3)
-    
-    print_status "Private key: $PRIVATE_KEY"
-    print_status "Public key: $PUBLIC_KEY"
     
     # Генерация коротких ID (как в статье Habr)
     SHORT_ID1=$(openssl rand -hex 6)
@@ -133,6 +127,85 @@ generate_config() {
     DEST_SITES=("apple.com" "microsoft.com" "cloudflare.com" "discord.com")
     DEST_SITE="apple.com"  # По умолчанию используем apple.com
     print_status "Сайт для маскировки: $DEST_SITE"
+}
+
+# Функция генерации X25519 ключей (после установки X-ray)
+generate_reality_keys() {
+    print_step "Генерация X25519 ключей для Reality..."
+    
+    # Проверяем, что X-ray установлен
+    if [[ ! -f /usr/local/bin/xray ]]; then
+        print_error "X-ray не установлен! Генерация ключей невозможна."
+        exit 1
+    fi
+    
+    # Генерация X25519 ключей с улучшенной обработкой
+    print_status "Выполняем команду: /usr/local/bin/xray x25519"
+    KEY_PAIR_OUTPUT=$(/usr/local/bin/xray x25519 2>&1)
+    
+    if [[ $? -ne 0 ]]; then
+        print_error "Ошибка генерации ключей X25519:"
+        print_error "$KEY_PAIR_OUTPUT"
+        exit 1
+    fi
+    
+    print_status "Вывод команды xray x25519:"
+    echo "$KEY_PAIR_OUTPUT"
+    
+    # Парсинг ключей с более гибким подходом
+    PRIVATE_KEY=$(echo "$KEY_PAIR_OUTPUT" | grep -i "private" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+    PUBLIC_KEY=$(echo "$KEY_PAIR_OUTPUT" | grep -i "public" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+    
+    # Проверка корректности ключей
+    if [[ -z "$PRIVATE_KEY" || ${#PRIVATE_KEY} -lt 32 ]]; then
+        print_error "Не удалось получить корректный приватный ключ!"
+        print_error "Полученный приватный ключ: '$PRIVATE_KEY'"
+        print_error "Попробуем альтернативный метод парсинга..."
+        
+        # Альтернативный метод парсинга
+        PRIVATE_KEY=$(echo "$KEY_PAIR_OUTPUT" | grep -oE '[A-Za-z0-9+/=_-]{32,}' | head -1)
+        PUBLIC_KEY=$(echo "$KEY_PAIR_OUTPUT" | grep -oE '[A-Za-z0-9+/=_-]{32,}' | tail -1)
+    fi
+    
+    if [[ -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" ]]; then
+        print_error "Не удалось сгенерировать ключи X25519 через xray!"
+        print_error "Вывод команды xray x25519:"
+        echo "$KEY_PAIR_OUTPUT"
+        print_warning "Пробуем резервный метод генерации ключей..."
+        
+        # Резервный метод - попробуем запустить xray x25519 еще раз с задержкой
+        print_status "Ждем 3 секунды и пробуем еще раз..."
+        sleep 3
+        
+        KEY_PAIR_OUTPUT_RETRY=$(/usr/local/bin/xray x25519 2>&1)
+        if [[ $? -eq 0 ]]; then
+            PRIVATE_KEY=$(echo "$KEY_PAIR_OUTPUT_RETRY" | grep -i "private" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+            PUBLIC_KEY=$(echo "$KEY_PAIR_OUTPUT_RETRY" | grep -i "public" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+            
+            if [[ -n "$PRIVATE_KEY" && -n "$PUBLIC_KEY" ]]; then
+                print_status "Ключи сгенерированы при повторной попытке"
+            else
+                print_error "Повторная попытка также не дала результата!"
+                print_error "Проверьте корректность установки X-ray"
+                print_error "Попробуйте запустить вручную: /usr/local/bin/xray x25519"
+                exit 1
+            fi
+        else
+            print_error "Повторная генерация ключей также провалилась!"
+            print_error "Ошибка: $KEY_PAIR_OUTPUT_RETRY"
+            exit 1
+        fi
+    fi
+    
+    print_status "Private key: $PRIVATE_KEY"
+    print_status "Public key: $PUBLIC_KEY"
+    
+    # Дополнительная валидация длины ключей
+    if [[ ${#PRIVATE_KEY} -lt 32 || ${#PUBLIC_KEY} -lt 32 ]]; then
+        print_warning "Ключи кажутся слишком короткими. Проверьте корректность:"
+        print_warning "Private key length: ${#PRIVATE_KEY}"
+        print_warning "Public key length: ${#PUBLIC_KEY}"
+    fi
 }
 
 # Функция создания конфигурации X-ray
@@ -428,16 +501,33 @@ validate_xray_config() {
         fi
     fi
     
+    # Дополнительная проверка ключей Reality в конфигурации
+    if grep -q "privateKey.*empty\|privateKey.*null\|privateKey.*\"\"" /usr/local/etc/xray/config.json; then
+        print_error "Обнаружен пустой privateKey в конфигурации!"
+        print_error "Проверьте генерацию ключей X25519"
+        exit 1
+    fi
+    
     # Валидация конфигурации X-ray
-    if /usr/local/bin/xray -test -c /usr/local/etc/xray/config.json; then
+    print_status "Тестирование конфигурации X-ray..."
+    CONFIG_TEST_OUTPUT=$(/usr/local/bin/xray -test -c /usr/local/etc/xray/config.json 2>&1)
+    CONFIG_TEST_RESULT=$?
+    
+    if [[ $CONFIG_TEST_RESULT -eq 0 ]]; then
         print_status "Конфигурация X-ray валидна"
     else
-        print_error "Ошибка в конфигурации X-ray! Проверьте файл /usr/local/etc/xray/config.json"
+        print_error "Ошибка в конфигурации X-ray!"
+        print_error "Вывод теста конфигурации:"
+        echo "$CONFIG_TEST_OUTPUT"
+        print_error ""
         print_error "Возможные проблемы:"
         print_error "- Неверные параметры протокола"
         print_error "- Некорректные настройки Reality"
-        print_error "- Проблемы с ключами шифрования"
-        print_error "Запустите для детального анализа: /usr/local/bin/xray -test -c /usr/local/etc/xray/config.json"
+        print_error "- Проблемы с ключами шифрования (privateKey/publicKey)"
+        print_error "- Неверный формат shortIds"
+        print_error ""
+        print_error "Проверьте файл: /usr/local/etc/xray/config.json"
+        print_error "Особое внимание обратите на секцию realitySettings"
         exit 1
     fi
 }
@@ -481,6 +571,15 @@ start_xray() {
             
             echo "=== Configuration Test ==="
             /usr/local/bin/xray -test -c /usr/local/etc/xray/config.json || true
+            echo ""
+            
+            echo "=== Reality Keys Check ==="
+            echo "Private Key in config: $(grep -o '"privateKey": "[^"]*"' /usr/local/etc/xray/config.json || echo 'Not found')"
+            echo "Private Key length: $(grep -o '"privateKey": "[^"]*"' /usr/local/etc/xray/config.json | grep -o '"[^"]*"$' | wc -c)"
+            echo ""
+            
+            echo "=== Configuration File Content ==="
+            cat /usr/local/etc/xray/config.json || echo "Config file not readable"
             echo ""
             
             echo "=== File Permissions ==="
@@ -868,7 +967,8 @@ main() {
     detect_os
     install_packages
     install_xray
-    generate_config
+    generate_basic_config
+    generate_reality_keys
     create_xray_config
     fix_xray_systemd_service
     setup_firewall

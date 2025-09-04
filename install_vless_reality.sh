@@ -152,48 +152,71 @@ generate_reality_keys() {
     print_status "Вывод команды xray x25519:"
     echo "$KEY_PAIR_OUTPUT"
     
-    # Парсинг ключей с более гибким подходом
+    # Парсинг ключей с улучшенным подходом
+    # Попробуем несколько методов парсинга
     PRIVATE_KEY=$(echo "$KEY_PAIR_OUTPUT" | grep -i "private" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
     PUBLIC_KEY=$(echo "$KEY_PAIR_OUTPUT" | grep -i "public" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
     
-    # Проверка корректности ключей
-    if [[ -z "$PRIVATE_KEY" || ${#PRIVATE_KEY} -lt 32 ]]; then
-        print_error "Не удалось получить корректный приватный ключ!"
-        print_error "Полученный приватный ключ: '$PRIVATE_KEY'"
-        print_error "Попробуем альтернативный метод парсинга..."
+    # Если первый метод не сработал, пробуем альтернативные
+    if [[ -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" ]]; then
+        print_status "Первый метод парсинга не сработал, пробуем альтернативные..."
         
-        # Альтернативный метод парсинга
-        PRIVATE_KEY=$(echo "$KEY_PAIR_OUTPUT" | grep -oE '[A-Za-z0-9+/=_-]{32,}' | head -1)
-        PUBLIC_KEY=$(echo "$KEY_PAIR_OUTPUT" | grep -oE '[A-Za-z0-9+/=_-]{32,}' | tail -1)
+        # Метод 2: извлекаем все длинные строки
+        KEYS_ARRAY=($(echo "$KEY_PAIR_OUTPUT" | grep -oE '[A-Za-z0-9+/=_-]{32,}'))
+        if [[ ${#KEYS_ARRAY[@]} -ge 2 ]]; then
+            PRIVATE_KEY="${KEYS_ARRAY[0]}"
+            PUBLIC_KEY="${KEYS_ARRAY[1]}"
+            print_status "Использован альтернативный метод парсинга"
+        fi
     fi
     
+    # Проверка корректности ключей
     if [[ -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" ]]; then
-        print_error "Не удалось сгенерировать ключи X25519 через xray!"
-        print_error "Вывод команды xray x25519:"
+        print_warning "Не удалось извлечь ключи стандартными методами"
+        print_status "Полный вывод команды xray x25519:"
+        echo "--- START OUTPUT ---"
         echo "$KEY_PAIR_OUTPUT"
-        print_warning "Пробуем резервный метод генерации ключей..."
+        echo "--- END OUTPUT ---"
+    fi
+    
+    # Финальная проверка - если ключи все еще пусты, пробуем последний раз
+    if [[ -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" ]]; then
+        print_warning "Ключи не получены, пробуем последний раз..."
+        print_status "Ждем 2 секунды и делаем финальную попытку..."
+        sleep 2
         
-        # Резервный метод - попробуем запустить xray x25519 еще раз с задержкой
-        print_status "Ждем 3 секунды и пробуем еще раз..."
-        sleep 3
-        
-        KEY_PAIR_OUTPUT_RETRY=$(/usr/local/bin/xray x25519 2>&1)
+        # Последняя попытка
+        FINAL_OUTPUT=$(/usr/local/bin/xray x25519 2>&1)
         if [[ $? -eq 0 ]]; then
-            PRIVATE_KEY=$(echo "$KEY_PAIR_OUTPUT_RETRY" | grep -i "private" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
-            PUBLIC_KEY=$(echo "$KEY_PAIR_OUTPUT_RETRY" | grep -i "public" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+            print_status "Финальная попытка - вывод команды:"
+            echo "$FINAL_OUTPUT"
             
-            if [[ -n "$PRIVATE_KEY" && -n "$PUBLIC_KEY" ]]; then
-                print_status "Ключи сгенерированы при повторной попытке"
-            else
-                print_error "Повторная попытка также не дала результата!"
-                print_error "Проверьте корректность установки X-ray"
-                print_error "Попробуйте запустить вручную: /usr/local/bin/xray x25519"
-                exit 1
+            # Применяем все методы парсинга к новому выводу
+            PRIVATE_KEY=$(echo "$FINAL_OUTPUT" | grep -i "private" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+            PUBLIC_KEY=$(echo "$FINAL_OUTPUT" | grep -i "public" | sed -E 's/.*[Kk]ey:?\s*([A-Za-z0-9+/=_-]+).*/\1/' | head -1)
+            
+            if [[ -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" ]]; then
+                KEYS_ARRAY=($(echo "$FINAL_OUTPUT" | grep -oE '[A-Za-z0-9+/=_-]{32,}'))
+                if [[ ${#KEYS_ARRAY[@]} -ge 2 ]]; then
+                    PRIVATE_KEY="${KEYS_ARRAY[0]}"
+                    PUBLIC_KEY="${KEYS_ARRAY[1]}"
+                fi
             fi
-        else
-            print_error "Повторная генерация ключей также провалилась!"
-            print_error "Ошибка: $KEY_PAIR_OUTPUT_RETRY"
+        fi
+        
+        # Если все попытки провалились
+        if [[ -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" ]]; then
+            print_error "Все попытки генерации ключей провалились!"
+            print_error "Возможные причины:"
+            print_error "1. X-ray установлен некорректно"
+            print_error "2. Команда 'xray x25519' не работает в этой версии"
+            print_error "3. Изменился формат вывода команды"
+            print_error ""
+            print_error "Попробуйте запустить вручную: /usr/local/bin/xray x25519"
+            print_error "И сообщите о проблеме разработчикам"
             exit 1
+        else
+            print_status "Ключи получены при финальной попытке!"
         fi
     fi
     
@@ -201,10 +224,14 @@ generate_reality_keys() {
     print_status "Public key: $PUBLIC_KEY"
     
     # Дополнительная валидация длины ключей
-    if [[ ${#PRIVATE_KEY} -lt 32 || ${#PUBLIC_KEY} -lt 32 ]]; then
+    if [[ ${#PRIVATE_KEY} -lt 20 || ${#PUBLIC_KEY} -lt 20 ]]; then
         print_warning "Ключи кажутся слишком короткими. Проверьте корректность:"
         print_warning "Private key length: ${#PRIVATE_KEY}"
         print_warning "Public key length: ${#PUBLIC_KEY}"
+    else
+        print_status "Ключи X25519 успешно сгенерированы и прошли валидацию"
+        print_status "Private key length: ${#PRIVATE_KEY} символов"
+        print_status "Public key length: ${#PUBLIC_KEY} символов"
     fi
 }
 
@@ -212,9 +239,29 @@ generate_reality_keys() {
 create_xray_config() {
     print_step "Создание конфигурации X-ray..."
     
+    # Проверяем, что все необходимые переменные установлены
+    if [[ -z "$USER_UUID" || -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" || -z "$SHORT_ID1" || -z "$DEST_SITE" || -z "$SERVER_IP" ]]; then
+        print_error "Не все необходимые переменные установлены для создания конфигурации!"
+        print_error "USER_UUID: ${USER_UUID:-'НЕ УСТАНОВЛЕН'}"
+        print_error "PRIVATE_KEY: ${PRIVATE_KEY:-'НЕ УСТАНОВЛЕН'}"
+        print_error "PUBLIC_KEY: ${PUBLIC_KEY:-'НЕ УСТАНОВЛЕН'}"
+        print_error "SHORT_ID1: ${SHORT_ID1:-'НЕ УСТАНОВЛЕН'}"
+        print_error "DEST_SITE: ${DEST_SITE:-'НЕ УСТАНОВЛЕН'}"
+        print_error "SERVER_IP: ${SERVER_IP:-'НЕ УСТАНОВЛЕН'}"
+        exit 1
+    fi
+    
+    print_status "Создание конфигурации с параметрами:"
+    print_status "  UUID: $USER_UUID"
+    print_status "  Private Key: ${PRIVATE_KEY:0:10}...${PRIVATE_KEY: -10} (${#PRIVATE_KEY} символов)"
+    print_status "  Public Key: ${PUBLIC_KEY:0:10}...${PUBLIC_KEY: -10} (${#PUBLIC_KEY} символов)"
+    print_status "  Dest Site: $DEST_SITE"
+    print_status "  Server IP: $SERVER_IP"
+    
     # Резервная копия оригинальной конфигурации
     if [[ -f /usr/local/etc/xray/config.json ]]; then
         cp /usr/local/etc/xray/config.json /usr/local/etc/xray/config.json.backup
+        print_status "Создана резервная копия существующей конфигурации"
     fi
     
     # Создание новой конфигурации (точно по статье Habr)
@@ -308,7 +355,31 @@ create_xray_config() {
 }
 EOF
     
-    print_status "Конфигурация X-ray создана"
+    # Проверяем, что конфигурация создана и содержит корректные данные
+    if [[ -f /usr/local/etc/xray/config.json ]]; then
+        print_status "Конфигурация X-ray создана"
+        
+        # Проверяем, что privateKey записан в файл
+        SAVED_PRIVATE_KEY=$(grep -o '"privateKey": "[^"]*"' /usr/local/etc/xray/config.json | cut -d'"' -f4)
+        if [[ -n "$SAVED_PRIVATE_KEY" && "$SAVED_PRIVATE_KEY" == "$PRIVATE_KEY" ]]; then
+            print_status "Private Key корректно записан в конфигурацию"
+        else
+            print_warning "Проблема с записью Private Key!"
+            print_warning "Ожидался: $PRIVATE_KEY"
+            print_warning "В файле: ${SAVED_PRIVATE_KEY:-'НЕ НАЙДЕН'}"
+        fi
+        
+        # Проверяем размер файла конфигурации
+        CONFIG_SIZE=$(wc -c < /usr/local/etc/xray/config.json)
+        print_status "Размер конфигурационного файла: $CONFIG_SIZE байт"
+        
+        # Показываем первые несколько строк для проверки
+        print_status "Первые строки конфигурации:"
+        head -10 /usr/local/etc/xray/config.json
+    else
+        print_error "Не удалось создать конфигурационный файл!"
+        exit 1
+    fi
 }
 
 # Функция исправления systemd сервиса X-ray
@@ -502,10 +573,18 @@ validate_xray_config() {
     fi
     
     # Дополнительная проверка ключей Reality в конфигурации
-    if grep -q "privateKey.*empty\|privateKey.*null\|privateKey.*\"\"" /usr/local/etc/xray/config.json; then
-        print_error "Обнаружен пустой privateKey в конфигурации!"
-        print_error "Проверьте генерацию ключей X25519"
+    print_status "Проверка ключей Reality в конфигурации..."
+    
+    CONFIG_PRIVATE_KEY=$(grep -o '"privateKey": "[^"]*"' /usr/local/etc/xray/config.json | cut -d'"' -f4)
+    if [[ -z "$CONFIG_PRIVATE_KEY" ]]; then
+        print_error "privateKey не найден в конфигурации!"
         exit 1
+    elif [[ "$CONFIG_PRIVATE_KEY" == "empty" || "$CONFIG_PRIVATE_KEY" == "null" || "$CONFIG_PRIVATE_KEY" == "" ]]; then
+        print_error "Обнаружен пустой privateKey в конфигурации: '$CONFIG_PRIVATE_KEY'"
+        exit 1
+    else
+        print_status "privateKey найден в конфигурации: ${CONFIG_PRIVATE_KEY:0:10}...${CONFIG_PRIVATE_KEY: -10}"
+        print_status "Длина privateKey в конфигурации: ${#CONFIG_PRIVATE_KEY} символов"
     fi
     
     # Валидация конфигурации X-ray

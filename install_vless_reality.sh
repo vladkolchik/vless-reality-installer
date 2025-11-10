@@ -14,7 +14,16 @@
 # - Улучшена диагностика ошибок и отладка ключей
 # 
 # Использование:
-# bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
+#   Интерактивно:
+#     bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)
+#   Неинтерактивно (аргументы):
+#     bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh) \
+#       --non-interactive --create-sudo-user y --username admin --password 'StrongPass123'
+#     Доп. параметры:
+#       --disable-root-ssh y|n
+#       --install-bot y|n
+#       --bot-token <TOKEN>
+#       --admin-ids <id1,id2>
 
 set -e
 
@@ -60,7 +69,7 @@ generate_short_id() {
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         print_error "Этот скрипт должен запускаться с правами root!"
-        print_status "Попробуйте: sudo bash <(curl -s https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)"
+        print_status "Попробуйте: sudo bash <(curl -fsSL https://raw.githubusercontent.com/vladkolchik/vless-reality-installer/refs/heads/main/install_vless_reality.sh)"
         exit 1
     fi
 }
@@ -84,8 +93,8 @@ detect_os() {
 install_packages() {
     print_step "Установка необходимых пакетов..."
     if [[ $OS == "debian" ]]; then
-        apt update -y
-        apt install -y curl wget unzip openssl qrencode python3
+        # Сначала пробуем установить без update; при ошибке выполняем update и повторяем
+        apt install -y curl wget unzip openssl qrencode python3 || { apt update -y && apt install -y curl wget unzip openssl qrencode python3; }
     else
         yum install -y curl wget unzip openssl qrencode python3
     fi
@@ -523,23 +532,38 @@ EOF
 
 	print_status "sudo установлен. Доступна команда 'grant-sudo' для выдачи прав."
 
-	# Предложить сразу выдать права новому пользователю
-	read -p "Создать пользователя с sudo-привилегиями сейчас? (y/N): " -n 1 -r
-	echo ""
-	if [[ $REPLY =~ ^[Yy]$ ]]; then
-		read -p "Введите имя нового пользователя: " NEW_USERNAME
+	# Создание пользователя с sudo-привилегиями: аргументы или интерактивные вопросы
+	if [[ "$NON_INTERACTIVE" == true || "$CREATE_SUDO_USER" =~ ^[Yy]$ ]]; then
 		if [[ -n "$NEW_USERNAME" ]]; then
 			/usr/local/bin/grant-sudo "$NEW_USERNAME"
 			print_status "Пользователь '$NEW_USERNAME' добавлен с sudo-привилегиями."
-			read -p "Задать пароль для '$NEW_USERNAME' сейчас? (y/N): " -n 1 -r
-			echo ""
-			if [[ $REPLY =~ ^[Yy]$ ]]; then
-				passwd "$NEW_USERNAME"
+			if [[ -n "$NEW_PASSWORD" ]]; then
+				echo "${NEW_USERNAME}:${NEW_PASSWORD}" | chpasswd
+				print_status "Пароль для '$NEW_USERNAME' установлен."
 			else
-				print_warning "Пароль не задан. Вы можете сделать это позже: passwd $NEW_USERNAME"
+				print_warning "Пароль для '$NEW_USERNAME' не указан, можно задать позже: passwd $NEW_USERNAME"
 			fi
 		else
-			print_warning "Имя пользователя не задано, пропускаем создание."
+			print_warning "Имя пользователя для выдачи sudo не указано, пропуск создания."
+		fi
+	else
+		read -p "Создать пользователя с sudo-привилегиями сейчас? (y/N): " -n 1 -r
+		echo ""
+		if [[ $REPLY =~ ^[Yy]$ ]]; then
+			read -p "Введите имя нового пользователя: " NEW_USERNAME
+			if [[ -n "$NEW_USERNAME" ]]; then
+				/usr/local/bin/grant-sudo "$NEW_USERNAME"
+				print_status "Пользователь '$NEW_USERNAME' добавлен с sudo-привилегиями."
+				read -p "Задать пароль для '$NEW_USERNAME' сейчас? (y/N): " -n 1 -r
+				echo ""
+				if [[ $REPLY =~ ^[Yy]$ ]]; then
+					passwd "$NEW_USERNAME"
+				else
+					print_warning "Пароль не задан. Вы можете сделать это позже: passwd $NEW_USERNAME"
+				fi
+			else
+				print_warning "Имя пользователя не задано, пропускаем создание."
+			fi
 		fi
 	fi
 }
@@ -1028,8 +1052,13 @@ main() {
     print_warning "Убедитесь, что у вас есть root права и стабильное интернет-соединение."
     echo ""
     
-    read -p "Продолжить установку? (y/N): " -n 1 -r
-    echo ""
+    if [[ "$NON_INTERACTIVE" == true ]]; then
+        REPLY="y"
+        echo "Продолжить установку? (y/N): y"
+    else
+        read -p "Продолжить установку? (y/N): " -n 1 -r
+        echo ""
+    fi
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         print_status "Установка отменена пользователем."
         exit 0
@@ -1065,6 +1094,39 @@ main() {
 
 # Обработка ошибок
 trap 'print_error "Произошла ошибка на строке $LINENO. Установка прервана."; exit 1' ERR
+
+# Параметры CLI (по умолчанию: интерактивный режим)
+NON_INTERACTIVE=false
+CREATE_SUDO_USER=""
+NEW_USERNAME=""
+NEW_PASSWORD=""
+DISABLE_ROOT_SSH=""
+INSTALL_BOT=""
+BOT_TOKEN=""
+ADMIN_IDS=""
+
+while (( "$#" )); do
+  case "$1" in
+    --non-interactive)
+      NON_INTERACTIVE=true; shift ;;
+    --create-sudo-user)
+      CREATE_SUDO_USER="${2:-}"; shift 2 || true ;;
+    --username)
+      NEW_USERNAME="${2:-}"; shift 2 || true ;;
+    --password)
+      NEW_PASSWORD="${2:-}"; shift 2 || true ;;
+    --disable-root-ssh)
+      DISABLE_ROOT_SSH="${2:-}"; shift 2 || true ;;
+    --install-bot)
+      INSTALL_BOT="${2:-}"; shift 2 || true ;;
+    --bot-token)
+      BOT_TOKEN="${2:-}"; shift 2 || true ;;
+    --admin-ids)
+      ADMIN_IDS="${2:-}"; shift 2 || true ;;
+    *)
+      shift || true ;;
+  esac
+done
 
 # Запуск скрипта
 main "$@"

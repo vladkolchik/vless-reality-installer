@@ -48,31 +48,6 @@ print_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
 print_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 print_err()  { echo -e "${RED}[ERROR]${NC} $*"; }
 
-urlencode() {
-  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
-}
-
-build_client_url() {
-  local uuid="$1"
-  local port="$2"
-  local fingerprint="$3"
-  local label="$4"
-  local sid_q=""
-
-  if [[ -n "$SHORT_ID" ]]; then
-    sid_q="&sid=$SHORT_ID"
-  fi
-
-  if [[ "${TRANSPORT_NETWORK:-tcp}" == "xhttp" ]]; then
-    local encoded_path encoded_extra
-    encoded_path=$(urlencode "${XHTTP_PATH:-/xhttp}")
-    encoded_extra=$(urlencode '{"xmux":{"maxConnections":1,"cMaxReuseTimes":0,"hMaxRequestTimes":0,"hMaxReusableSecs":0,"hKeepAlivePeriod":0}}')
-    echo "vless://$uuid@$SERVER_IP:$port?type=xhttp&security=reality&pbk=$PUBLIC_KEY&fp=$fingerprint&sni=$DEST_SITE${sid_q}&flow=xtls-rprx-vision&path=$encoded_path&mode=auto&extra=$encoded_extra#$label"
-  else
-    echo "vless://$uuid@$SERVER_IP:$port?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=$fingerprint&sni=$DEST_SITE${sid_q}&flow=xtls-rprx-vision#$label"
-  fi
-}
-
 usage() {
   cat <<EOF
 Usage: vless <command> [args]
@@ -169,13 +144,8 @@ read_reality_params() {
     print_warn "No shortIds found; URLs will omit sid parameter"
     SHORT_ID=""
   fi
-  TRANSPORT_NETWORK=$(jq -r "(${jq_base} | .streamSettings.network) // \"tcp\"" "$CONFIG_PATH" | head -n1)
-  if [[ -z "$TRANSPORT_NETWORK" || "$TRANSPORT_NETWORK" == "null" ]]; then
-    TRANSPORT_NETWORK="tcp"
-  fi
-  XHTTP_PATH=$(jq -r "(${jq_base} | .streamSettings.xhttpSettings.path) // empty" "$CONFIG_PATH" | head -n1)
   # SNI / dest domain
-  DEST_SITE=$(jq -r "(${jq_base} | .streamSettings.realitySettings.serverNames[0]) // (${jq_base} | .streamSettings.realitySettings.target) // (${jq_base} | .streamSettings.realitySettings.dest)" "$CONFIG_PATH" | head -n1)
+  DEST_SITE=$(jq -r "(${jq_base} | .streamSettings.realitySettings.serverNames[0]) // (${jq_base} | .streamSettings.realitySettings.dest)" "$CONFIG_PATH" | head -n1)
   if [[ -z "$DEST_SITE" || "$DEST_SITE" == "null" ]]; then
     DEST_SITE="apple.com"
   fi
@@ -273,9 +243,9 @@ show_client() {
   mkdir -p "$OUTPUT_DIR"
 
   # URLs
-  local URL_443 URL_80
-  URL_443=$(build_client_url "$uuid" "443" "chrome" "$safe")
-  URL_80=$(build_client_url "$uuid" "80" "safari" "$safe")
+  local sid_q=""; if [[ -n "$SHORT_ID" ]]; then sid_q="&sid=$SHORT_ID"; fi
+  local URL_443="vless://$uuid@$SERVER_IP:443?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=chrome&sni=$DEST_SITE${sid_q}&flow=xtls-rprx-vision#$safe"
+  local URL_80="vless://$uuid@$SERVER_IP:80?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=safari&sni=$DEST_SITE${sid_q}&flow=xtls-rprx-vision#$safe"
 
   echo "443: $URL_443"
   echo "80:  $URL_80"

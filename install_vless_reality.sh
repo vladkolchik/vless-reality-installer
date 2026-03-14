@@ -4,8 +4,11 @@
 # Автоматическая установка и настройка VLESS+Reality VPN сервера
 # Основано на проверенной методике из статьи: https://habr.com/ru/articles/869340/
 # 
-# Версия: 1.2 (исправлены проблемы совместимости с X-ray 25.8.31+)
+# Версия: 1.3 (XHTTP transport + xmux maxConnections=1 против всплесков TLS)
 # Изменения:
+# - Транспорт по умолчанию переведен на XHTTP
+# - Клиентские профили получают xmux.maxConnections=1 для снижения количества TLS-хендшейков
+# - Добавлен случайный XHTTP path для сервера и клиентских ссылок
 # - Исправлена синтаксическая ошибка JSON в конфигурации
 # - Исправлена проблема с генерацией privateKey для Reality
 # - Генерация ключей перенесена после установки X-ray
@@ -63,6 +66,34 @@ generate_uuid() {
 
 generate_short_id() {
     openssl rand -hex 6
+}
+
+generate_xhttp_path() {
+    echo "/xhttp-$(openssl rand -hex 8)"
+}
+
+urlencode() {
+    python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
+build_vless_url() {
+    local uuid="$1"
+    local port="$2"
+    local fingerprint="$3"
+    local short_id="$4"
+    local label="$5"
+    local sid_q=""
+    local encoded_path
+    local encoded_extra
+
+    if [[ -n "$short_id" ]]; then
+        sid_q="&sid=$short_id"
+    fi
+
+    encoded_path=$(urlencode "$XHTTP_PATH")
+    encoded_extra=$(urlencode "$XHTTP_EXTRA")
+
+    echo "vless://$uuid@$SERVER_IP:$port?type=xhttp&security=reality&pbk=$PUBLIC_KEY&fp=$fingerprint&sni=$DEST_SITE${sid_q}&flow=xtls-rprx-vision&path=$encoded_path&mode=$XHTTP_MODE&extra=$encoded_extra#$label"
 }
 
 # Функция для проверки root прав
@@ -136,6 +167,13 @@ generate_basic_config() {
     DEST_SITES=("apple.com" "microsoft.com" "cloudflare.com" "discord.com")
     DEST_SITE="apple.com"  # По умолчанию используем apple.com
     print_status "Сайт для маскировки: $DEST_SITE"
+
+    XHTTP_PATH=$(generate_xhttp_path)
+    XHTTP_MODE="auto"
+    XHTTP_EXTRA='{"xmux":{"maxConnections":1,"cMaxReuseTimes":0,"hMaxRequestTimes":0,"hMaxReusableSecs":0,"hKeepAlivePeriod":0}}'
+    print_status "Транспорт: XHTTP"
+    print_status "XHTTP path: $XHTTP_PATH"
+    print_status "XHTTP xmux.maxConnections: 1"
 }
 
 # Функция генерации X25519 ключей (после установки X-ray)
@@ -249,7 +287,7 @@ create_xray_config() {
     print_step "Создание конфигурации X-ray..."
     
     # Проверяем, что все необходимые переменные установлены
-    if [[ -z "$USER_UUID" || -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" || -z "$SHORT_ID1" || -z "$DEST_SITE" || -z "$SERVER_IP" ]]; then
+    if [[ -z "$USER_UUID" || -z "$PRIVATE_KEY" || -z "$PUBLIC_KEY" || -z "$SHORT_ID1" || -z "$DEST_SITE" || -z "$SERVER_IP" || -z "$XHTTP_PATH" ]]; then
         print_error "Не все необходимые переменные установлены для создания конфигурации!"
         print_error "USER_UUID: ${USER_UUID:-'НЕ УСТАНОВЛЕН'}"
         print_error "PRIVATE_KEY: ${PRIVATE_KEY:-'НЕ УСТАНОВЛЕН'}"
@@ -257,6 +295,7 @@ create_xray_config() {
         print_error "SHORT_ID1: ${SHORT_ID1:-'НЕ УСТАНОВЛЕН'}"
         print_error "DEST_SITE: ${DEST_SITE:-'НЕ УСТАНОВЛЕН'}"
         print_error "SERVER_IP: ${SERVER_IP:-'НЕ УСТАНОВЛЕН'}"
+        print_error "XHTTP_PATH: ${XHTTP_PATH:-'НЕ УСТАНОВЛЕН'}"
         exit 1
     fi
     
@@ -266,6 +305,8 @@ create_xray_config() {
     print_status "  Public Key: ${PUBLIC_KEY:0:10}...${PUBLIC_KEY: -10} (${#PUBLIC_KEY} символов)"
     print_status "  Dest Site: $DEST_SITE"
     print_status "  Server IP: $SERVER_IP"
+    print_status "  Transport: xhttp"
+    print_status "  XHTTP Path: $XHTTP_PATH"
     
     # Резервная копия оригинальной конфигурации
     if [[ -f /usr/local/etc/xray/config.json ]]; then
@@ -273,7 +314,7 @@ create_xray_config() {
         print_status "Создана резервная копия существующей конфигурации"
     fi
     
-    # Создание новой конфигурации (точно по статье Habr)
+    # Создание новой конфигурации с XHTTP для снижения всплесков TLS-хендшейков
     cat > /usr/local/etc/xray/config.json << EOF
 {
     "log": {
@@ -293,10 +334,13 @@ create_xray_config() {
                 "decryption": "none"
             },
             "streamSettings": {
-                "network": "tcp",
+                "network": "xhttp",
                 "security": "reality",
+                "xhttpSettings": {
+                    "path": "$XHTTP_PATH"
+                },
                 "realitySettings": {
-                    "dest": "$DEST_SITE:443",
+                    "target": "$DEST_SITE:443",
                     "serverNames": [
                         "$DEST_SITE",
                         "www.$DEST_SITE"
@@ -331,22 +375,25 @@ create_xray_config() {
                     "decryption": "none"
                 },
                 "streamSettings": {
-                    "network": "tcp",
+                    "network": "xhttp",
                     "security": "reality",
-                                    "realitySettings": {
-                    "dest": "$DEST_SITE:443",
-                    "serverNames": [
-                        "$DEST_SITE",
-                        "www.$DEST_SITE"
-                    ],
-                    "privateKey": "$PRIVATE_KEY",
-                    "publicKey": "$PUBLIC_KEY",
-                    "shortIds": [
-                        "$SHORT_ID1",
-                        "$SHORT_ID2",
-                        "$SHORT_ID3"
-                    ]
-                }
+                    "xhttpSettings": {
+                        "path": "$XHTTP_PATH"
+                    },
+                    "realitySettings": {
+                        "target": "$DEST_SITE:443",
+                        "serverNames": [
+                            "$DEST_SITE",
+                            "www.$DEST_SITE"
+                        ],
+                        "privateKey": "$PRIVATE_KEY",
+                        "publicKey": "$PUBLIC_KEY",
+                        "shortIds": [
+                            "$SHORT_ID1",
+                            "$SHORT_ID2",
+                            "$SHORT_ID3"
+                        ]
+                    }
                 },
                 "sniffing": {
                     "enabled": true,
@@ -739,8 +786,8 @@ generate_client_configs() {
         CONFIG_NAME_443="config_${i}_443"
         CONFIG_NAME_80="config_${i}_80"
         
-        VLESS_URL_443="vless://$USER_UUID@$SERVER_IP:443?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=chrome&sni=$DEST_SITE&sid=$SHORT_ID_VALUE&flow=xtls-rprx-vision#$CONFIG_NAME_443"
-        VLESS_URL_80="vless://$USER_UUID@$SERVER_IP:80?type=tcp&security=reality&pbk=$PUBLIC_KEY&fp=safari&sni=$DEST_SITE&sid=$SHORT_ID_VALUE&flow=xtls-rprx-vision#$CONFIG_NAME_80"
+        VLESS_URL_443=$(build_vless_url "$USER_UUID" "443" "chrome" "$SHORT_ID_VALUE" "$CONFIG_NAME_443")
+        VLESS_URL_80=$(build_vless_url "$USER_UUID" "80" "safari" "$SHORT_ID_VALUE" "$CONFIG_NAME_80")
         
         # Сохранение URL в файл
         echo "$VLESS_URL_443" > "/root/vless-configs/$CONFIG_NAME_443.txt"
@@ -762,6 +809,10 @@ VLESS+Reality VPN Конфигурации
 UUID: $USER_UUID
 Public Key: $PUBLIC_KEY
 Сайт маскировки: $DEST_SITE
+Транспорт: XHTTP + REALITY
+XHTTP path: $XHTTP_PATH
+XHTTP mode: $XHTTP_MODE
+XHTTP xmux.maxConnections: 1
 
 Конфигурации:
     1. config_1_443 / config_1_80 (ShortID: $SHORT_ID1)
@@ -776,8 +827,12 @@ Public Key: $PUBLIC_KEY
 
 Инструкции:
 1. Скачайте QR код или скопируйте URL из соответствующего .txt файла
-2. Импортируйте в ваше VPN приложение
+2. Импортируйте в клиент с поддержкой XHTTP
 3. Подключитесь и проверьте работу
+
+Примечание:
+- Профили используют XHTTP и зажимают xmux до одного нижележащего соединения
+- Это уменьшает всплески TLS-хендшейков, которые могут попадать под "сибирскую блокировку"
 
 Проверка работы:
 - Откройте https://ifconfig.me - должен показать IP вашего сервера
@@ -994,6 +1049,8 @@ show_results() {
     echo "   🌐 IP: $SERVER_IP"
     echo "   🔐 Порт: 443"
     echo "   🎭 Маскировка: $DEST_SITE"
+    echo "   🚇 Транспорт: XHTTP + REALITY"
+    echo "   🛣️  XHTTP path: $XHTTP_PATH"
     echo ""
     
     echo -e "${BLUE}🔑 Данные для подключения:${NC}"
@@ -1017,7 +1074,7 @@ show_results() {
     
     echo -e "${YELLOW}⚡ Быстрый старт:${NC}"
     echo "   1. Скачайте QR код: scp root@$SERVER_IP:/root/vless-configs/config_1_443.png . (или config_1_80.png)"
-    echo "   2. Отсканируйте QR код в VPN приложении"
+    echo "   2. Отсканируйте QR код в VPN приложении с поддержкой XHTTP"
     echo "   3. Подключитесь и проверьте IP: https://ifconfig.me"
     echo ""
     

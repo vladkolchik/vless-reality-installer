@@ -34,6 +34,8 @@ have(){ command -v "$1" >/dev/null 2>&1; }
 RAW_BASE="${RAW_BASE:-}"
 NON_INTERACTIVE=false
 MODE="install"
+BOT_TOKEN=""
+ADMINS=""
 
 while (( "$#" )); do
   case "$1" in
@@ -41,6 +43,10 @@ while (( "$#" )); do
       RAW_BASE="${2:-}"; shift 2 || true ;;
     --non-interactive)
       NON_INTERACTIVE=true; shift || true ;;
+    --bot-token)
+      BOT_TOKEN="${2:-}"; shift 2 || true ;;
+    --admin-ids)
+      ADMINS="${2:-}"; shift 2 || true ;;
     update)
       MODE="update"; shift || true ;;
     *)
@@ -61,8 +67,7 @@ SERVICE_DST="/etc/systemd/system/vless-bot.service"
 
 info "Installing dependencies"
 if have apt; then
-  apt update -y
-  apt install -y python3-venv jq qrencode curl uuid-runtime
+  apt install -y python3-venv jq qrencode curl uuid-runtime || { apt update -y && apt install -y python3-venv jq qrencode curl uuid-runtime; }
 elif have dnf; then
   dnf install -y python3-virtualenv jq qrencode curl util-linux
 elif have yum; then
@@ -104,14 +109,18 @@ else
   info "Creating $ENV_DST"
   if [[ "$NON_INTERACTIVE" == true ]]; then
     cat > "$ENV_DST" <<EOF
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_ADMINS=
+TELEGRAM_BOT_TOKEN=${BOT_TOKEN}
+TELEGRAM_ADMINS=${ADMINS}
 VLESS_BIN=/usr/local/bin/vless
 VLESS_OUTPUT_DIR=/root/vless-configs
 EOF
   else
-    read -r -p "Enter TELEGRAM_BOT_TOKEN: " BOT_TOKEN
-    read -r -p "Enter TELEGRAM_ADMINS (comma or space separated ids): " ADMINS
+    if [[ -z "$BOT_TOKEN" ]]; then
+      read -r -p "Enter TELEGRAM_BOT_TOKEN: " BOT_TOKEN
+    fi
+    if [[ -z "$ADMINS" ]]; then
+      read -r -p "Enter TELEGRAM_ADMINS (comma or space separated ids): " ADMINS
+    fi
     cat > "$ENV_DST" <<EOF
 TELEGRAM_BOT_TOKEN=${BOT_TOKEN}
 TELEGRAM_ADMINS=${ADMINS}
